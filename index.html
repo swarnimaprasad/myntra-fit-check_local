@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Virtual Try-On</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                DEFAULT: '#ff3f6c',
+                '50': '#fff0f4',
+                '100': '#ffe2e9',
+                '200': '#ffcbd8',
+                '300': '#ffabc1',
+                '400': '#ff7fa5',
+                '500': '#ff528b',
+                '600': '#ff3f6c',
+                '700': '#e6225e',
+                '800': '#bf194f',
+                '900': '#991643',
+                '950': '#5d0724',
+              },
+            },
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              serif: ['Instrument Serif', 'serif'],
+            },
+            animation: {
+              sparkle: 'sparkle 2.5s ease-in-out infinite',
+              'slide-in-up': 'slide-in-up 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards',
+              'pulse-bright': 'pulse-bright 2s infinite',
+              shimmer: 'shimmer 2s linear infinite',
+            },
+            keyframes: {
+              sparkle: {
+                '0%, 100%': { transform: 'scale(1) rotate(0deg)', opacity: '1' },
+                '25%': { transform: 'scale(0.8) rotate(15deg)', opacity: '0.7' },
+                '50%': { transform: 'scale(1.2) rotate(-10deg)', opacity: '1' },
+                '75%': { transform: 'scale(0.9) rotate(5deg)', opacity: '0.8' },
+              },
+              'slide-in-up': {
+                'from': { opacity: '0', transform: 'translateY(20px)' },
+                'to': { opacity: '1', transform: 'translateY(0)' },
+              },
+              'pulse-bright': {
+                '0%, 100%': { opacity: '1', boxShadow: '0 0 0 0 rgba(255, 63, 108, 0.7)' },
+                '70%': { opacity: '1', boxShadow: '0 0 0 10px rgba(255, 63, 108, 0)' },
+              },
+              shimmer: {
+                'from': { backgroundPosition: '-1000px 0' },
+                'to': { backgroundPosition: '1000px 0' },
+              },
+            }
+          }
+        }
+      }
+    </script>
+    <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "react": "https://esm.sh/react@^19.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.10.0",
+    "react-image-crop": "https://esm.sh/react-image-crop@^11.0.6",
+    "framer-motion": "https://esm.sh/framer-motion@^11.2.12",
+    "clsx": "https://esm.sh/clsx@^2.1.1",
+    "tailwind-merge": "https://esm.sh/tailwind-merge@^2.4.0",
+    "@tsparticles/react": "https://esm.sh/@tsparticles/react@^3.0.0",
+    "@tsparticles/engine": "https://esm.sh/@tsparticles/engine@^3.5.0",
+    "@tsparticles/slim": "https://esm.sh/@tsparticles/slim@^3.5.0",
+    "eact": "https://aistudiocdn.com/eact@^0.0.1-security"
+  }
+}
+</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://esm.sh/react-image-crop@^11.0.6/dist/ReactCrop.css" />
+    <link rel="stylesheet" href="/index.css" />
+  <link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

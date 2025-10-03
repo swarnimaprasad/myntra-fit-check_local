@@ -1,0 +1,261 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+*/
+
+:root {
+  --grad-a: rgba(255, 60, 111, 0.85); /* Myntra pink */
+  --grad-b: rgba(255, 111, 97, 0.85); /* coral */
+  --grad-c: rgba(255, 210, 0, 0.85); /* gold */
+}
+
+.bg-brand-gradient {
+  background-color: var(--grad-a); /* Fallback */
+  background-image: linear-gradient(135deg, var(--grad-a) 0%, var(--grad-b) 50%, var(--grad-c) 100%);
+}
+
+body {
+  color: #2a2a2a; /* Dark text color */
+  background-color: #ffffff; /* White background */
+}
+
+/* Animation for gentle fade-in of components */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.6s ease-out forwards;
+}
+
+/* Animation for the main canvas image to zoom into focus */
+@keyframes zoom-in {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.animate-zoom-in {
+  animation: zoom-in 0.7s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* Animation for the wardrobe sheet to slide up from the bottom */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.animate-slide-up {
+  animation: slide-up 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* New Animations */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.sparkle-accent {
+    position: relative;
+    overflow: hidden;
+}
+
+.sparkle-accent::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+    animation: sparkle-sheen 3.5s infinite;
+    animation-delay: 1.5s;
+}
+
+@keyframes sparkle-sheen {
+    from { transform: translateX(-200%) skewX(-25deg); }
+    to { transform: translateX(400%) skewX(-25deg); }
+}
+
+/* Mystical Mist and Text Entrance Animations */
+.mist-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.mist-overlay::before,
+.mist-overlay::after {
+  content: '';
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  border-radius: 50%;
+  opacity: 0.15;
+  background: radial-gradient(circle, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 60%);
+  filter: blur(80px);
+  will-change: transform, opacity;
+}
+
+.mist-overlay::before {
+  top: -50%;
+  left: -50%;
+  animation: mist-drift 16s infinite linear alternate;
+}
+
+.mist-overlay::after {
+  bottom: -50%;
+  right: -50%;
+  animation: mist-drift 12s infinite linear alternate-reverse;
+}
+
+@keyframes mist-drift {
+  from {
+    transform: translate(-20%, -20%) rotate(0deg);
+    opacity: 0.1;
+  }
+  to {
+    transform: translate(20%, 20%) rotate(30deg);
+    opacity: 0.2;
+  }
+}
+
+/* Drop-in animation for hero title */
+.animate-dropIn {
+  animation: dropIn 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes dropIn {
+  from {
+    opacity: 0;
+    transform: translateY(-40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Shimmer/glow for caption underline */
+.shimmer-underline {
+  position: relative;
+}
+.shimmer-underline::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+  animation: shimmer-line 4s infinite;
+}
+
+@keyframes shimmer-line {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Fade-up animation for caption text */
+.animate-fadeUp {
+    animation: fadeUp 0.7s ease-out forwards;
+    animation-delay: 0.5s;
+    opacity: 0;
+}
+
+@keyframes fadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+
+/* Custom scrollbar for a more integrated look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db; /* Light gray scrollbar */
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af; /* Darker gray on hover */
+}
+
+/* Utility to hide scrollbar */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-float {
+    animation: none;
+  }
+  .sparkle-accent::before {
+    display: none;
+  }
+  .mist-overlay::before,
+  .mist-overlay::after {
+    animation: none;
+    opacity: 0.1;
+  }
+  .animate-dropIn, .animate-fadeUp {
+    animation: none;
+    opacity: 1;
+  }
+  .shimmer-underline::after {
+    animation: none;
+    background: rgba(255, 255, 255, 0.3);
+  }
+}
