@@ -124,7 +124,7 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
         };
         
         // Update local state immediately for responsiveness
-        const updatedWishlist = [newItem, ...crew.sharedWishlist];
+        const updatedWishlist = [newItem, ...(crew.sharedWishlist || [])];
         onUpdateCrew({ ...crew, sharedWishlist: updatedWishlist });
 
         // Sync to Firebase if crewId is available
@@ -150,26 +150,26 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
 
     // Firebase real-time functions for reactions, comments, and ratings
     const handleReaction = async (itemId: string, emoji: string) => {
-        if (!activeMember || !crewId) return;
+        if (!activeMember || !crewId || !crew?.sharedWishlist) return;
 
         const itemIndex = crew.sharedWishlist.findIndex(item => item.id === itemId);
         if (itemIndex === -1) return;
 
         const item = crew.sharedWishlist[itemIndex];
-        const currentReactions = item.reactions[emoji] || [];
+        const currentReactions = (item.reactions || {})[emoji] || [];
         const memberAlreadyReacted = currentReactions.includes(activeMember.id);
 
         let updatedReactions;
         if (memberAlreadyReacted) {
             // Remove reaction
             updatedReactions = {
-                ...item.reactions,
+                ...(item.reactions || {}),
                 [emoji]: currentReactions.filter(id => id !== activeMember.id)
             };
         } else {
             // Add reaction
             updatedReactions = {
-                ...item.reactions,
+                ...(item.reactions || {}),
                 [emoji]: [...currentReactions, activeMember.id]
             };
         }
@@ -184,7 +184,7 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
     };
 
     const handleAddComment = async (itemId: string, text: string) => {
-        if (!activeMember || !crewId || !text.trim()) return;
+        if (!activeMember || !crewId || !text.trim() || !crew?.sharedWishlist) return;
 
         const itemIndex = crew.sharedWishlist.findIndex(item => item.id === itemId);
         if (itemIndex === -1) return;
@@ -200,7 +200,7 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
             // Push new comment to Firebase
             const commentsRef = ref(db, `crews/${crewId}/sharedWishlist/${itemIndex}/comments`);
             const item = crew.sharedWishlist[itemIndex];
-            const updatedComments = [...item.comments, newComment];
+            const updatedComments = [...(item.comments || []), newComment];
             await set(commentsRef, updatedComments);
         } catch (error) {
             console.error('Failed to add comment to Firebase:', error);
@@ -208,22 +208,22 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
     };
 
     const handleRating = async (itemId: string, rating: number) => {
-        if (!activeMember || !crewId) return;
+        if (!activeMember || !crewId || !crew?.sharedWishlist) return;
 
         const itemIndex = crew.sharedWishlist.findIndex(item => item.id === itemId);
         if (itemIndex === -1) return;
 
         const item = crew.sharedWishlist[itemIndex];
-        const existingRatingIndex = item.ratings.findIndex(r => r.memberId === activeMember.id);
+        const existingRatingIndex = (item.ratings || []).findIndex(r => r.memberId === activeMember.id);
         let updatedRatings;
 
         if (existingRatingIndex >= 0) {
             // Update existing rating
-            updatedRatings = [...item.ratings];
+            updatedRatings = [...(item.ratings || [])];
             updatedRatings[existingRatingIndex] = { memberId: activeMember.id, value: rating };
         } else {
             // Add new rating
-            updatedRatings = [...item.ratings, { memberId: activeMember.id, value: rating }];
+            updatedRatings = [...(item.ratings || []), { memberId: activeMember.id, value: rating }];
         }
 
         try {
@@ -251,7 +251,7 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
 
     const renderSharedWishlist = () => (
         <div className="space-y-1">
-            {crew.sharedWishlist.map((item) => {
+            {(crew.sharedWishlist || []).map((item) => {
                 const avgRating = getAverageRating(item.ratings);
                 return (
                     <div key={item.id}>
@@ -344,7 +344,7 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
                     </div>
                 );
             })}
-             {crew.sharedWishlist.length === 0 && (
+             {(crew.sharedWishlist || []).length === 0 && (
                 <div className="text-center py-10">
                     <p className="text-sm text-gray-500">The shared wishlist is empty.</p>
                     <p className="text-xs text-gray-400 mt-1">Add items from your personal list to collaborate.</p>
@@ -355,7 +355,7 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
 
     const renderPersonalWishlist = () => {
         if (!activeMember) return null;
-        const sharedIds = new Set(crew.sharedWishlist.map(i => i.id));
+        const sharedIds = new Set((crew.sharedWishlist || []).map(i => i.id));
         return (
              <div>
                  <button onClick={() => setIsShareModalOpen(true)} className="w-full flex items-center justify-center gap-2 mb-2 px-3 py-1.5 text-sm font-semibold text-white bg-primary-600 rounded-md hover:bg-primary-700 transition-colors">
@@ -401,7 +401,7 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
                     isOpen={isShareModalOpen}
                     onClose={() => setIsShareModalOpen(false)}
                     personalWishlist={activeMember?.wishlist || []}
-                    sharedWishlistIds={new Set(crew.sharedWishlist.map(i => i.id))}
+                    sharedWishlistIds={new Set((crew.sharedWishlist || []).map(i => i.id))}
                     onShareItem={handleAddItemToShared}
                 />
             </AnimatePresence>

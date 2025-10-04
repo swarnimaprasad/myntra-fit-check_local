@@ -500,4 +500,4 @@ export const generateBackgroundChange = async (baseImageUrl: string, backgroundP
         },
     });
     return handleApiResponse(response);
-};
+}

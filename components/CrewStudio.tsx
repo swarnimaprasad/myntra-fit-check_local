@@ -334,15 +334,18 @@ const CrewStudio: React.FC<CrewStudioProps> = ({ crew, setCrew, wishlist, poseIn
     
     const unsubscribe = onValue(sharedWishlistRef, (snapshot) => {
       const data = snapshot.val();
+      let sharedWishlist: SharedWishlistItem[] = [];
+      
       if (data) {
-        const sharedWishlist = Object.values(data) as SharedWishlistItem[];
-        // Sort by order in the array (most recently added first)
-        const sortedWishlist = [...sharedWishlist];
-        
-        // Only update if shared wishlist has actually changed to avoid infinite loops
-        if (JSON.stringify(sortedWishlist) !== JSON.stringify(crew.sharedWishlist)) {
-          setCrew(prevCrew => prevCrew ? { ...prevCrew, sharedWishlist: sortedWishlist } : prevCrew);
-        }
+        sharedWishlist = Object.values(data) as SharedWishlistItem[];
+      }
+      
+      // Sort by order in the array (most recently added first)
+      const sortedWishlist = [...sharedWishlist];
+      
+      // Only update if shared wishlist has actually changed to avoid infinite loops
+      if (JSON.stringify(sortedWishlist) !== JSON.stringify(crew.sharedWishlist)) {
+        setCrew(prevCrew => prevCrew ? { ...prevCrew, sharedWishlist: sortedWishlist } : prevCrew);
       }
     });
 
