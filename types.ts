@@ -107,6 +107,7 @@ export interface SharedWishlistItem extends WardrobeItem {
 }
 
 export interface Crew {
+  id?: string; // Optional crew ID for Firebase real-time sync
   name: string;
   vibe: string;
   members: CrewMember[];

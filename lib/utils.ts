@@ -138,8 +138,6 @@ export const searchProductsAndCategories = (
     };
 };
 
-// FIX: Replaced JSX syntax with React.createElement to fix parsing errors.
-// JSX is not supported in `.ts` files and must be converted to plain TypeScript.
 export const highlightText = (text: string, query: string) => {
   if (!query.trim()) return text;
   const lowerText = text.toLowerCase();
@@ -156,3 +154,85 @@ export const highlightText = (text: string, query: string) => {
     text.substring(endIndex)
   );
 };
+
+// --- IndexedDB Session Storage ---
+
+const DB_NAME = 'MyntraFitCheckDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'sessions';
+
+let db: IDBDatabase;
+
+function openDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (db) {
+      return resolve(db);
+    }
+
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onerror = () => {
+      console.error('IndexedDB error:', request.error);
+      reject('Error opening IndexedDB');
+    };
+
+    request.onsuccess = () => {
+      db = request.result;
+      resolve(db);
+    };
+
+    request.onupgradeneeded = () => {
+      const dbInstance = request.result;
+      if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
+        dbInstance.createObjectStore(STORE_NAME);
+      }
+    };
+  });
+}
+
+export async function setSessionData(key: string, value: any): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.put(value, key);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => {
+        console.error('Error saving to IndexedDB:', request.error);
+        reject('Error saving session data');
+    };
+  });
+}
+
+export async function getSessionData<T>(key: string): Promise<T | undefined> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.get(key);
+
+    request.onsuccess = () => {
+      resolve(request.result as T | undefined);
+    };
+    request.onerror = () => {
+        console.error('Error fetching from IndexedDB:', request.error);
+        reject('Error fetching session data');
+    };
+  });
+}
+
+export async function clearSessionData(key: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.delete(key);
+    
+    request.onsuccess = () => resolve();
+    request.onerror = () => {
+        console.error('Error deleting from IndexedDB:', request.error);
+        reject('Error clearing session data');
+    };
+  });
+}

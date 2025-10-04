@@ -620,3 +620,18 @@ export const ShoesIcon = (props: React.SVGProps<SVGSVGElement>) => (
         <path d="M5 16H2.5a1.5 1.5 0 0 1-1.5-1.5V12a1 1 0 0 1 1-1h3"/>
     </svg>
 );
+
+export const PantsIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 2v4a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V2"/>
+      <path d="M8 10v12h4V10"/>
+      <path d="M16 10v12h-4"/>
+    </svg>
+);
+
+export const SkirtIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 22h16l-3-10H7L4 22z"/>
+        <path d="M4 12V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4"/>
+    </svg>
+);

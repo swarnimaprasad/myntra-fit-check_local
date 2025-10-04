@@ -1,5 +1,4 @@
-/**
- * @license
+/* @license
  * SPDX-License-Identifier: Apache-2.0
 */
 
@@ -9,6 +8,8 @@ import { Crew, WardrobeItem, SharedWishlistItem, CrewMember } from '../types';
 import { StarIcon, PlusIcon, PaperAirplaneIcon, XIcon, Share2Icon } from './icons';
 import { urlToFile } from '../lib/utils';
 import { cn } from '../lib/utils';
+import { db } from '../firebaseConfig';
+import { ref, set, push, update } from 'firebase/database';
 
 const REACTIONS = ['👍', '❤️', '🔥', '😂'];
 
@@ -80,9 +81,10 @@ interface SharedWishlistPanelProps {
     onUpdateCrew: (updatedCrew: Crew) => void;
     onTryOnItem: (garmentFile: File, garmentInfo: WardrobeItem) => void;
     isLoading: boolean;
+    crewId?: string; // Add Firebase crew ID for real-time operations
 }
 
-const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeMemberId, onUpdateCrew, onTryOnItem, isLoading }) => {
+const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeMemberId, onUpdateCrew, onTryOnItem, isLoading, crewId }) => {
     const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
     const [comment, setComment] = useState('');
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -96,64 +98,23 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
 
     const handleRateItem = (rating: number) => {
         if (!selectedItemId || !activeMember) return;
-        const newWishlist = crew.sharedWishlist.map(item => {
-            if (item.id === selectedItemId) {
-                // Allow user to change their rating
-                const existingRatingIndex = item.ratings.findIndex(r => r.memberId === activeMember.id);
-                const newRatings = [...item.ratings];
-                if (existingRatingIndex > -1) {
-                    newRatings[existingRatingIndex] = { memberId: activeMember.id, value: rating };
-                } else {
-                    newRatings.push({ memberId: activeMember.id, value: rating });
-                }
-                return { ...item, ratings: newRatings };
-            }
-            return item;
-        });
-        onUpdateCrew({ ...crew, sharedWishlist: newWishlist });
+        handleRating(selectedItemId, rating);
     };
 
     const handleReactToItem = (emoji: string) => {
         if (!selectedItemId || !activeMember) return;
-        const newWishlist = crew.sharedWishlist.map(item => {
-            if (item.id === selectedItemId) {
-                const newReactions = { ...item.reactions };
-                const reactors = newReactions[emoji] || [];
-                const memberId = activeMember.id;
-                
-                // Allow toggling reaction
-                if (reactors.includes(memberId)) {
-                    newReactions[emoji] = reactors.filter(id => id !== memberId);
-                } else {
-                    newReactions[emoji] = [...reactors, memberId];
-                }
-                return { ...item, reactions: newReactions };
-            }
-            return item;
-        });
-        onUpdateCrew({ ...crew, sharedWishlist: newWishlist });
+        handleReaction(selectedItemId, emoji);
     };
     
     const handleCommentOnItem = () => {
         if (!selectedItemId || !comment.trim() || !activeMember) return;
-        const newWishlist = crew.sharedWishlist.map(item => {
-            if (item.id === selectedItemId) {
-                const newComment = {
-                    id: `c-${Date.now()}`,
-                    sender: activeMember.name,
-                    text: comment.trim(),
-                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                };
-                return { ...item, comments: [...(item.comments || []), newComment] };
-            }
-            return item;
-        });
-        onUpdateCrew({ ...crew, sharedWishlist: newWishlist });
+        handleAddComment(selectedItemId, comment);
         setComment('');
     };
 
-    const handleAddItemToShared = (item: WardrobeItem) => {
+    const handleAddItemToShared = async (item: WardrobeItem) => {
         if (!activeMember) return;
+        
         const newItem: SharedWishlistItem = {
             ...item,
             addedBy: activeMember.name,
@@ -161,7 +122,20 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
             reactions: {},
             comments: [],
         };
-        onUpdateCrew({ ...crew, sharedWishlist: [newItem, ...crew.sharedWishlist] });
+        
+        // Update local state immediately for responsiveness
+        const updatedWishlist = [newItem, ...crew.sharedWishlist];
+        onUpdateCrew({ ...crew, sharedWishlist: updatedWishlist });
+
+        // Sync to Firebase if crewId is available
+        if (crewId) {
+            try {
+                const sharedWishlistRef = ref(db, `crews/${crewId}/sharedWishlist`);
+                await set(sharedWishlistRef, updatedWishlist);
+            } catch (error) {
+                console.error('Failed to sync shared item to Firebase:', error);
+            }
+        }
     };
     
     const handleTryOn = async (item: WardrobeItem) => {
@@ -173,13 +147,100 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
             console.error("Failed to prepare garment for try-on", error);
         }
     };
+
+    // Firebase real-time functions for reactions, comments, and ratings
+    const handleReaction = async (itemId: string, emoji: string) => {
+        if (!activeMember || !crewId) return;
+
+        const itemIndex = crew.sharedWishlist.findIndex(item => item.id === itemId);
+        if (itemIndex === -1) return;
+
+        const item = crew.sharedWishlist[itemIndex];
+        const currentReactions = item.reactions[emoji] || [];
+        const memberAlreadyReacted = currentReactions.includes(activeMember.id);
+
+        let updatedReactions;
+        if (memberAlreadyReacted) {
+            // Remove reaction
+            updatedReactions = {
+                ...item.reactions,
+                [emoji]: currentReactions.filter(id => id !== activeMember.id)
+            };
+        } else {
+            // Add reaction
+            updatedReactions = {
+                ...item.reactions,
+                [emoji]: [...currentReactions, activeMember.id]
+            };
+        }
+
+        try {
+            // Update Firebase
+            const itemRef = ref(db, `crews/${crewId}/sharedWishlist/${itemIndex}/reactions`);
+            await set(itemRef, updatedReactions);
+        } catch (error) {
+            console.error('Failed to update reaction in Firebase:', error);
+        }
+    };
+
+    const handleAddComment = async (itemId: string, text: string) => {
+        if (!activeMember || !crewId || !text.trim()) return;
+
+        const itemIndex = crew.sharedWishlist.findIndex(item => item.id === itemId);
+        if (itemIndex === -1) return;
+
+        const newComment = {
+            id: `comment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            sender: activeMember.name,
+            text: text.trim(),
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+
+        try {
+            // Push new comment to Firebase
+            const commentsRef = ref(db, `crews/${crewId}/sharedWishlist/${itemIndex}/comments`);
+            const item = crew.sharedWishlist[itemIndex];
+            const updatedComments = [...item.comments, newComment];
+            await set(commentsRef, updatedComments);
+        } catch (error) {
+            console.error('Failed to add comment to Firebase:', error);
+        }
+    };
+
+    const handleRating = async (itemId: string, rating: number) => {
+        if (!activeMember || !crewId) return;
+
+        const itemIndex = crew.sharedWishlist.findIndex(item => item.id === itemId);
+        if (itemIndex === -1) return;
+
+        const item = crew.sharedWishlist[itemIndex];
+        const existingRatingIndex = item.ratings.findIndex(r => r.memberId === activeMember.id);
+        let updatedRatings;
+
+        if (existingRatingIndex >= 0) {
+            // Update existing rating
+            updatedRatings = [...item.ratings];
+            updatedRatings[existingRatingIndex] = { memberId: activeMember.id, value: rating };
+        } else {
+            // Add new rating
+            updatedRatings = [...item.ratings, { memberId: activeMember.id, value: rating }];
+        }
+
+        try {
+            // Update Firebase
+            const ratingsRef = ref(db, `crews/${crewId}/sharedWishlist/${itemIndex}/ratings`);
+            await set(ratingsRef, updatedRatings);
+        } catch (error) {
+            console.error('Failed to update rating in Firebase:', error);
+        }
+    };
     
-    const getAverageRating = (ratings: { memberId: string, value: number }[]) => {
-        if (ratings.length === 0) return 0;
+    const getAverageRating = (ratings: { memberId: string, value: number }[] | undefined) => {
+        if (!ratings || ratings.length === 0) return 0;
         return ratings.reduce((acc, r) => acc + r.value, 0) / ratings.length;
     };
     
-    const myRating = selectedItem?.ratings.find(r => r.memberId === activeMember?.id)?.value || 0;
+    const myRating = selectedItem?.ratings?.find(r => r.memberId === activeMember?.id)?.value || 0;
 
     const renderTabs = () => (
         <div className="flex border-b border-gray-300 mb-2">
@@ -207,11 +268,11 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
                                 <div className="flex items-center gap-1 text-yellow-500">
                                     <StarIcon className={`w-3.5 h-3.5 ${avgRating > 0 ? 'fill-current' : ''}`} />
                                     <span className="text-xs font-bold text-gray-600">{avgRating.toFixed(1)}</span>
-                                    <span className="text-gray-400 text-xs">({item.ratings.length})</span>
+                                    <span className="text-gray-400 text-xs">({(item.ratings || []).length})</span>
                                 </div>
                                 <div className="flex items-center gap-1 mt-1 flex-wrap">
                                     {/* FIX: Added a type assertion for the `reactors` variable to ensure it's treated as a string array, resolving errors with accessing the `.length` property. */}
-                                    {Object.entries(item.reactions).map(([emoji, reactors]) => {
+                                    {Object.entries(item.reactions || {}).map(([emoji, reactors]) => {
                                         const reactorList = reactors as string[];
                                         return reactorList.length > 0 && (
                                             <div key={emoji} className="flex items-center gap-0.5 text-xs bg-gray-200 rounded-full px-1.5 py-0.5">
@@ -245,7 +306,7 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     {REACTIONS.map(emoji => (
-                                                        <button key={emoji} onClick={() => handleReactToItem(emoji)} className={cn("p-1 rounded-full transition-transform text-xl leading-none", (item.reactions[emoji] || []).includes(activeMember.id) ? 'bg-primary-100 scale-110' : 'hover:bg-gray-200 hover:scale-110')}>
+                                                        <button key={emoji} onClick={() => handleReactToItem(emoji)} className={cn("p-1 rounded-full transition-transform text-xl leading-none", ((item.reactions || {})[emoji] || []).includes(activeMember.id) ? 'bg-primary-100 scale-110' : 'hover:bg-gray-200 hover:scale-110')}>
                                                             {emoji}
                                                         </button>
                                                     ))}
@@ -254,7 +315,7 @@ const SharedWishlistPanel: React.FC<SharedWishlistPanelProps> = ({ crew, activeM
                                         </div>
 
                                         <div className="flex-grow space-y-3 overflow-y-auto p-2 my-3 bg-white rounded-lg border min-h-[120px]">
-                                            {item.comments.length > 0 ? item.comments.map(c => {
+                                            {(item.comments || []).length > 0 ? (item.comments || []).map(c => {
                                                 const isMe = c.sender === activeMember.name;
                                                 return (
                                                     <div key={c.id} className={`flex items-end gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}>

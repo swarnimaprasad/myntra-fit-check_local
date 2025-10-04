@@ -227,7 +227,29 @@ const CrewSetup: React.FC<CrewSetupProps> = ({ onCreateCrew }) => {
                     <button
                       type="button"
                       className="flex-1 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 font-semibold text-sm"
-                      onClick={() => navigator.clipboard.writeText(`${window.location.origin}/crew/${crewId}`)}
+                      onClick={() => {
+                        const link = `${window.location.origin}/crew/${crewId}`;
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                          navigator.clipboard.writeText(link).catch(err => {
+                            console.error('Failed to copy to clipboard:', err);
+                            // Fallback: create a temporary input element
+                            const textArea = document.createElement('textarea');
+                            textArea.value = link;
+                            document.body.appendChild(textArea);
+                            textArea.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(textArea);
+                          });
+                        } else {
+                          // Fallback for older browsers
+                          const textArea = document.createElement('textarea');
+                          textArea.value = link;
+                          document.body.appendChild(textArea);
+                          textArea.select();
+                          document.execCommand('copy');
+                          document.body.removeChild(textArea);
+                        }
+                      }}
                     >
                       Copy Link
                     </button>

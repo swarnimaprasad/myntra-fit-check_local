@@ -5,11 +5,11 @@
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ref, get } from 'firebase/database';
+import { db } from './firebaseConfig';
 import StartScreen from './components/StartScreen';
 import { StylistResult, Crew, ChatMessage, SharedWishlistItem, WardrobeItem, AnalysisResult, CartItem, SavedOutfit, ChatbotContext } from './types';
 import { allWardrobeItems } from './wardrobe';
-import { db } from './firebaseConfig';
-import { ref, set } from 'firebase/database';
 import Header from './components/Header';
 import { getFriendlyErrorMessage, searchProductsAndCategories } from './lib/utils';
 import { getStylistRecommendations } from './services/geminiService';
@@ -284,7 +284,15 @@ const ProductsView = ({ products, onAddToWishlist, wishlist, onAddToBag, cartIte
 
 // --- Toast Component ---
 
-const Toast = ({ message, onUndo, onDismiss }: { message: string, onUndo?: () => void, onDismiss: () => void }) => {
+// FIX: Define a type for the Toast component's props and explicitly type it as a React.FC
+// This resolves a TypeScript error where the special 'key' prop was not recognized.
+interface ToastProps {
+  message: string;
+  onUndo?: () => void;
+  onDismiss: () => void;
+}
+
+const Toast: React.FC<ToastProps> = ({ message, onUndo, onDismiss }) => {
     useEffect(() => {
         const timer = setTimeout(onDismiss, 4000);
         return () => clearTimeout(timer);
@@ -312,16 +320,10 @@ export const App = () => {
     const [currentGender, setCurrentGender] = useState<'men' | 'women' | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
-    const [wishlist, setWishlist] = useState<WardrobeItem[]>(() => {
-        // Initialize with some sample items for testing crew wishlist functionality
-        return allWardrobeItems.slice(0, 8);
-    });
+    const [wishlist, setWishlist] = useState<WardrobeItem[]>([]);
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [isBagOpen, setIsBagOpen] = useState(false);
     const [crew, setCrew] = useState<Crew | null>(null);
-    const [crewId, setCrewId] = useState<string | null>(null);
-    const [memberId, setMemberId] = useState<string | null>(null);
-    const [isJoiningCrew, setIsJoiningCrew] = useState(false);
     const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
     const [outfitToLoad, setOutfitToLoad] = useState<SavedOutfit | null>(null);
     const [itemToTryOn, setItemToTryOn] = useState<WardrobeItem | null>(null);
@@ -332,6 +334,44 @@ export const App = () => {
     const [showAccessoryNudge, setShowAccessoryNudge] = useState(false);
 
     const [toast, setToast] = useState<{ id: number, message: string, onUndo?: () => void } | null>(null);
+
+    // Handle incoming crew share links
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const crewSession = params.get('crew_session');
+
+        if (crewSession) {
+            try {
+                // Use decodeURIComponent instead of atob to handle Unicode characters
+                const decodedCrew = JSON.parse(decodeURIComponent(crewSession));
+                // Basic validation
+                if (decodedCrew && decodedCrew.name && Array.isArray(decodedCrew.members)) {
+                    setCrew(decodedCrew);
+                    setView('crew_studio');
+                    // Clean up the URL
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+            } catch (e) {
+                console.error("Failed to parse crew session from URL", e);
+                // Optional: show a toast/error message to the user
+            }
+        }
+    }, []); // Run only on mount
+
+    // Keep the main user's crew wishlist in sync with the app's wishlist
+    useEffect(() => {
+        if (crew && crew.members.length > 0) {
+          if (JSON.stringify(crew.members[0].wishlist) !== JSON.stringify(wishlist)) {
+            setCrew(prevCrew => {
+              if (!prevCrew) return null;
+              const newMembers = [...prevCrew.members];
+              newMembers[0] = { ...newMembers[0], wishlist: wishlist };
+              return { ...prevCrew, members: newMembers };
+            });
+          }
+        }
+    }, [wishlist, crew]);
+
 
     const showToast = (message: string, onUndo?: () => void) => {
         setToast({ id: Date.now(), message, onUndo });
@@ -415,81 +455,64 @@ export const App = () => {
     };
 
     // Crew Handlers
-    const handleCreateCrew = (name: string, vibe: string, crewId?: string, memberId?: string, isJoining?: boolean) => {
+    const handleCreateCrew = async (name: string, vibe: string, crewId?: string, memberId?: string, isJoining?: boolean) => {
         if (crewId && memberId) {
-            // Firebase-based crew flow - store Firebase IDs
-            setCrewId(crewId);
-            setMemberId(memberId);
-            setIsJoiningCrew(isJoining || false);
-            
-            // Create local crew state from Firebase data
-            const newCrew: Crew = {
-                name,
-                vibe,
-                members: [{
-                    id: memberId,
-                    name: isJoining ? 'You' : 'Me',
-                    modelImageUrl: null,
-                    outfitHistory: [],
-                    poseIndex: 0,
-                    wishlist: [], // Personal wishlist for the user
-                }],
-                messages: [],
-                sharedWishlist: [],
-            };
-            // Add some of the main user's wishlist to the personal wishlist for demo
-            newCrew.members[0].wishlist = wishlist.slice(0, 5);
-            setCrew(newCrew);
-            
-            // Save the initial crew data to Firebase with wishlist
-            if (crewId) {
-                console.log('Saving initial crew data to Firebase...');
+            // Firebase-based crew - fetch real crew data and convert to local format
+            try {
                 const crewRef = ref(db, `crews/${crewId}`);
-                const firebaseData = {
-                    name: newCrew.name,
-                    vibe: newCrew.vibe,
-                    members: newCrew.members.reduce((acc, member) => {
-                        acc[member.id] = {
-                            joinedAt: Date.now(),
-                            modelImageUrl: member.modelImageUrl || null,
-                            wishlist: member.wishlist || []
-                        };
-                        return acc;
-                    }, {} as any),
-                    messages: {},
-                    sharedWishlist: {}
-                };
-                set(crewRef, firebaseData).catch((error) => {
-                    console.error('Failed to save initial crew data to Firebase:', error);
-                });
+                const snapshot = await get(crewRef);
+                const firebaseCrewData = snapshot.val();
+                
+                if (firebaseCrewData) {
+                    // Convert Firebase crew structure to local crew structure
+                    const members = Object.entries(firebaseCrewData.members || {}).map(([id, memberData]: [string, any]) => ({
+                        id,
+                        name: memberData.name,
+                        modelImageUrl: memberData.modelImageUrl || null,
+                        outfitHistory: [],
+                        poseIndex: 0,
+                        wishlist: id === memberId ? wishlist : [], // Only current user gets the wishlist
+                    }));
+                    
+                    const newCrew: Crew = {
+                        id: crewId,
+                        name: firebaseCrewData.name,
+                        vibe: firebaseCrewData.vibe,
+                        members,
+                        messages: [],
+                        sharedWishlist: [],
+                    };
+                    setCrew(newCrew);
+                    setView('crew_studio');
+                }
+            } catch (error) {
+                console.error('Failed to fetch crew data:', error);
+                // Fallback to local crew creation
+                createLocalCrew(name, vibe);
             }
-            
-            setView('crew_studio');
         } else {
-            // Original local crew flow
-            setCrewId(null);
-            setMemberId(null);
-            setIsJoiningCrew(false);
-            
-            const newCrew: Crew = {
-                name,
-                vibe,
-                members: [{
-                    id: 'member-1',
-                    name: 'Me',
-                    modelImageUrl: null,
-                    outfitHistory: [],
-                    poseIndex: 0,
-                    wishlist: [], // Personal wishlist for the main user
-                }],
-                messages: [],
-                sharedWishlist: [],
-            };
-            // Add some of the main user's wishlist to the personal wishlist for demo
-            newCrew.members[0].wishlist = wishlist.slice(0, 5);
-            setCrew(newCrew);
-            setView('crew_studio');
+            // Local crew creation
+            createLocalCrew(name, vibe);
         }
+    };
+
+    const createLocalCrew = (name: string, vibe: string) => {
+        const newCrew: Crew = {
+            name,
+            vibe,
+            members: [{
+                id: 'member-1',
+                name: 'Me',
+                modelImageUrl: null,
+                outfitHistory: [],
+                poseIndex: 0,
+                wishlist: wishlist,
+            }],
+            messages: [],
+            sharedWishlist: [],
+        };
+        setCrew(newCrew);
+        setView('crew_studio');
     };
 
     // Outfit Handlers
@@ -583,9 +606,6 @@ export const App = () => {
                     wishlist={wishlist}
                     poseInstructions={["Front-facing, neutral stance", "Slightly turned, 3/4 view", "Walking towards camera", "Hands on hips", "Side profile view"]}
                     onSaveOutfit={handleSaveOutfit}
-                    isJoining={isJoiningCrew}
-                    crewId={crewId || undefined}
-                    memberId={memberId || undefined}
                 />;
             case 'outfits':
                  return <OutfitsView 

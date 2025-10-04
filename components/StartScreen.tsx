@@ -164,15 +164,15 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized, onImageUplo
   };
 
   const letterVariants = {
-    hidden: { opacity: 0, y: 20, filter: 'blur(10px)' },
+    hidden: { opacity: 0, y: 20, filter: 'blur(6px)' },
     visible: {
       opacity: 1,
       y: 0,
       filter: 'blur(0px)',
       transition: {
-        type: 'spring' as const,
-        damping: 12,
-        stiffness: 200,
+        type: 'tween' as const,
+        duration: 0.6,
+        ease: [0.25, 0.46, 0.45, 0.94],
       },
     },
   };

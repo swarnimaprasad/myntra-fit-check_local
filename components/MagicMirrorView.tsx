@@ -13,10 +13,11 @@ import WardrobePanel from './WardrobeModal';
 import { generateVirtualTryOnImage, generatePoseVariation, analyzeUserProfile, getStylistRecommendations, generateBackgroundChange, getAccessoryNudgeDecision } from '../services/geminiService';
 import { OutfitLayer, WardrobeItem, AnalysisResult, BackgroundTheme, ClothingCategory, SavedOutfit, ChatbotContext } from '../types';
 import { allWardrobeItems, BACKGROUND_THEMES } from '../wardrobe';
-import { getFriendlyErrorMessage, urlToFile } from '../lib/utils';
+import { getFriendlyErrorMessage, urlToFile, setSessionData, getSessionData, clearSessionData } from '../lib/utils';
 import { CheckCircleIcon, ChevronRightIcon, HeartIcon, HeartIconFilled, Trash2Icon, SparklesIcon, UserFocusIcon, CheckIcon, ShoppingBagIcon, PlusIcon, XIcon } from './icons';
 import Spinner from './Spinner';
 import { cn } from '../lib/utils';
+import { SwatchShuffleLoader } from './EngagingLoader';
 
 type MagicMirrorStep = 'start' | 'analyzing' | 'analysis_report' | 'recommendations' | 'studio';
 const STEPS_CONFIG = ['Create Model', 'AI Analysis', 'Recommendations', 'Studio'];
@@ -539,46 +540,52 @@ const MagicMirrorView = ({
     // --- SESSION PERSISTENCE ---
     const MAGIC_MIRROR_SESSION_KEY = 'magicMirrorSession';
 
-    // Load session from localStorage on initial render
+    // Load session from IndexedDB on initial render
     useEffect(() => {
-        try {
-            const savedSession = localStorage.getItem(MAGIC_MIRROR_SESSION_KEY);
-            if (savedSession) {
-                const { step, modelImageUrl, outfitHistory, comparisonIndex, currentPoseIndex, currentTheme, analysis, recommendations } = JSON.parse(savedSession);
-                
-                if (modelImageUrl && step !== 'start') {
-                    setStep(step);
-                    setModelImageUrl(modelImageUrl);
-                    setOutfitHistory(outfitHistory);
-                    setComparisonIndex(comparisonIndex);
-                    setCurrentPoseIndex(currentPoseIndex);
-                    setCurrentTheme(currentTheme);
-                    setAnalysis(analysis);
-                    if (analysis) onAnalysisComplete(analysis);
-                    setRecommendations(recommendations);
+        const loadSession = async () => {
+            try {
+                const savedSession = await getSessionData<any>(MAGIC_MIRROR_SESSION_KEY);
+                if (savedSession) {
+                    const { step, modelImageUrl, outfitHistory, comparisonIndex, currentPoseIndex, currentTheme, analysis, recommendations } = savedSession;
                     
-                    // Re-create the model file from URL for features that need it
-                    urlToFile(modelImageUrl, 'restored-model.png').then(setModelImageFile).catch(console.error);
+                    if (modelImageUrl && step !== 'start') {
+                        setStep(step);
+                        setModelImageUrl(modelImageUrl);
+                        setOutfitHistory(outfitHistory);
+                        setComparisonIndex(comparisonIndex);
+                        setCurrentPoseIndex(currentPoseIndex);
+                        setCurrentTheme(currentTheme);
+                        setAnalysis(analysis);
+                        if (analysis) onAnalysisComplete(analysis);
+                        setRecommendations(recommendations);
+                        
+                        // Re-create the model file from URL for features that need it
+                        urlToFile(modelImageUrl, 'restored-model.png').then(setModelImageFile).catch(console.error);
+                    }
                 }
+            } catch (e) {
+                console.error('Failed to load magic mirror session from IndexedDB', e);
+            } finally {
+                setIsHydrated(true);
             }
-        } catch (e) {
-            console.error('Failed to load magic mirror session', e);
-            localStorage.removeItem(MAGIC_MIRROR_SESSION_KEY);
-        }
-        setIsHydrated(true);
+        };
+        loadSession();
     }, []); // Empty dependency array, runs only once on mount
 
-    // Save session to localStorage on state change
+    // Save session to IndexedDB on state change
     useEffect(() => {
         if (!isHydrated || step === 'start' || isLoading) {
             return;
         }
-        try {
-            const sessionToSave = { step, modelImageUrl, outfitHistory, comparisonIndex, currentPoseIndex, currentTheme, analysis, recommendations };
-            localStorage.setItem(MAGIC_MIRROR_SESSION_KEY, JSON.stringify(sessionToSave));
-        } catch (e) {
-            console.error('Failed to save magic mirror session', e);
-        }
+        const saveSession = async () => {
+            try {
+                const sessionToSave = { step, modelImageUrl, outfitHistory, comparisonIndex, currentPoseIndex, currentTheme, analysis, recommendations };
+                await setSessionData(MAGIC_MIRROR_SESSION_KEY, sessionToSave);
+            } catch (e) {
+                console.error('Failed to save magic mirror session to IndexedDB', e);
+            }
+        };
+        saveSession();
     }, [isHydrated, step, modelImageUrl, outfitHistory, comparisonIndex, currentPoseIndex, currentTheme, analysis, recommendations, isLoading]);
 
 
@@ -829,7 +836,7 @@ const MagicMirrorView = ({
     if (reason) {
       console.log(`Starting over due to: ${reason}`);
     }
-    localStorage.removeItem(MAGIC_MIRROR_SESSION_KEY);
+    clearSessionData(MAGIC_MIRROR_SESSION_KEY).catch(e => console.error('Failed to clear session data', e));
     
     setStep('start');
     setIsImageUploadedInStart(false);
@@ -848,7 +855,6 @@ const MagicMirrorView = ({
 
   const renderContent = () => {
     const motionProps = {
-        key: step,
         initial: { opacity: 0, x: 30 },
         animate: { opacity: 1, x: 0 },
         exit: { opacity: 0, x: -30 },
@@ -862,31 +868,26 @@ const MagicMirrorView = ({
 
     switch(step) {
       case 'start':
-        return <motion.div {...motionProps}><StartScreen onModelFinalized={handleModelFinalized} onImageUpload={handleImageUpload} /></motion.div>;
+        return <motion.div key={step} {...motionProps}><StartScreen onModelFinalized={handleModelFinalized} onImageUpload={handleImageUpload} /></motion.div>;
       case 'analyzing':
         return (
-            <motion.div {...motionProps}>
-                <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-gray-800 relative">
-                    <div className="mist-overlay rounded-2xl overflow-hidden"></div>
-                    <Spinner />
-                    <h1 className="text-2xl font-serif">Analyzing Your Profile...</h1>
-                    <p className="text-gray-600 max-w-sm text-center">Our AI stylist is determining your body type and skin tone for personalized recommendations.</p>
-                    {error && <p className="text-red-600 bg-red-100 p-2 rounded-md text-sm mt-2">{error}</p>}
-                </div>
+            <motion.div key={step} {...motionProps} className="w-full h-full flex flex-col items-center justify-center bg-white/50 backdrop-blur-md">
+                <SwatchShuffleLoader message="Analyzing Your Style Profile..." />
+                {error && <p className="text-red-600 bg-red-100 p-2 rounded-md text-sm mt-8">{error}</p>}
             </motion.div>
         );
       case 'analysis_report':
         if (!analysis) return null;
-        return <motion.div {...motionProps}><AnalysisReportView analysis={analysis} onNext={() => setStep('recommendations')} modelImageUrl={modelImageUrl} /></motion.div>;
+        return <motion.div key={step} {...motionProps}><AnalysisReportView analysis={analysis} onNext={() => setStep('recommendations')} modelImageUrl={modelImageUrl} /></motion.div>;
       case 'recommendations':
-        return <motion.div {...motionProps}><RecommendationView items={recommendations} onAddToWishlist={onAddToWishlist} wishlist={wishlist} onFinish={() => setStep('studio')} /></motion.div>;
+        return <motion.div key={step} {...motionProps}><RecommendationView items={recommendations} onAddToWishlist={onAddToWishlist} wishlist={wishlist} onFinish={() => setStep('studio')} /></motion.div>;
       case 'studio':
         if (!modelImageUrl || !currentOutfit) return null;
         const availablePoseKeys = currentOutfit ? Object.keys(currentOutfit.poseImages).sort((a,b) => poseInstructions.indexOf(a) - poseInstructions.indexOf(b)) : [];
         const comparisonImageUrl = comparisonIndex !== null ? outfitHistory[comparisonIndex]?.poseImages[poseInstructions[currentPoseIndex]] : null;
         
         return (
-          <motion.div {...motionProps} className="w-full h-full">
+          <motion.div key={step} {...motionProps} className="w-full h-full">
             <div className="w-full h-full flex flex-col md:flex-row bg-transparent overflow-hidden">
                 <StudioSidebar
                     analysis={analysis}
@@ -901,7 +902,7 @@ const MagicMirrorView = ({
                     onSaveOutfit={onSaveOutfit}
                     currentPreviewUrl={displayImageUrl}
                 />
-                <main className="flex-grow h-full flex flex-col bg-transparent">
+                <main className="flex-grow h-full flex flex-col bg-transparent min-w-0 overflow-hidden">
                     <Canvas
                       displayImageUrl={displayImageUrl}
                       onStartOver={() => handleStartOver()}
