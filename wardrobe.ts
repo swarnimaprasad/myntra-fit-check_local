@@ -678,7 +678,7 @@ const menAndWomenItems: WardrobeItem[] = [
   rating: { value: 4.4, count: 110 },
 },
 {
-  id: 'men-coat-pepe-trench',
+  id: 'men-coat-pepe-trench-2',
   name: 'Navy Trench Coat',
   brand: 'Pepe Jeans',
   url: 'https://static.zara.net/assets/public/c7fe/e031/eef04aa68e7d/b028e31d545b/07380422800-e1/07380422800-e1.jpg?ts=1755764719208&w=447',
@@ -690,7 +690,7 @@ const menAndWomenItems: WardrobeItem[] = [
   rating: { value: 4.1, count: 75 },
 },
 {
-  id: 'men-shorts-nike-drifit',
+  id: 'men-shorts-nike-drifit-2',
   name: 'Bermuda Shorts',
   brand: 'Zara',
   url: 'https://static.zara.net/assets/public/35ed/2980/0a6e45f7b9ff/fcdade604a87/00761451700-e1/00761451700-e1.jpg?ts=1751382829465&w=328',

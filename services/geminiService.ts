@@ -60,6 +60,10 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 const model = 'gemini-2.5-flash-image-preview';
 const analysisModel = 'gemini-2.5-flash';
 
+// Debug API key loading
+console.log('🔑 API Key loaded:', process.env.API_KEY ? 'Yes' : 'No');
+console.log('🔑 API Key starts with:', process.env.API_KEY?.substring(0, 10) + '...' || 'undefined');
+
 export const getAccessoryNudgeDecision = async (
     outfit: WardrobeItem[],
     analysis: AnalysisResult | null,

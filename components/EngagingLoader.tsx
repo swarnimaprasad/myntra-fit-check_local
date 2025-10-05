@@ -139,42 +139,77 @@ export const SwatchShuffleLoader = ({ message }: { message: string }) => {
   );
 };
 
-// --- Stitch Card Loader ---
+// --- Rotating Clothesline Loader (replaces StitchCardLoader) ---
+
+const clotheslineEmojis = ['👕', '👖', '👗', '🧦', '🧥', '👚', '🩳'];
 
 export const StitchCardLoader = ({ message }: { message: string }) => {
-    return (
-        <div className="flex flex-col items-center justify-center gap-6 text-center w-full max-w-sm p-4">
-            <div className="w-48 h-48 relative">
-                <svg className="w-full h-full" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    {/* The faint outline of the skirt */}
-                    <path d="M60 40 H132 L172 148 H20 L60 40 Z" fill="#F3F4F6" stroke="#E5E7EB" strokeWidth="2" />
-                    
-                    {/* The animated stitching */}
-                    <motion.path
-                      d="M60 40 H132 L172 148 H20 L60 40"
-                      stroke="#ff3f6c"
-                      strokeWidth="4"
-                      strokeLinecap="round"
-                      strokeDasharray="10 10"
-                      initial={{ pathLength: 0, strokeDashoffset: 10 }}
-                      animate={{ pathLength: 1, strokeDashoffset: 0 }}
-                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                    />
-                     {/* The knot animation at the end */}
-                    <motion.g
-                        transform="translate(60, 40)"
-                        initial={{ opacity: 0, scale: 0.5 }}
-                        animate={{ opacity: [0, 1, 1, 0] }}
-                        transition={{ duration: 2, repeat: Infinity, times: [0, 0.1, 0.9, 1] }}
-                    >
-                        <circle cx="0" cy="0" r="5" fill="#ff3f6c" />
-                    </motion.g>
-                </svg>
-            </div>
-            <h1 className="text-xl font-serif font-semibold text-gray-800">{message}</h1>
-            <StylingTips />
-        </div>
-    );
+  const animationDuration = 15; // Slower, smoother animation
+
+  const marqueeVariants = {
+    animate: {
+      x: ['100%', '-100%'],
+      transition: {
+        x: {
+          repeat: Infinity,
+          repeatType: 'loop' as const,
+          duration: animationDuration,
+          // FIX: Added `as const` to fix the TypeScript error for framer-motion's Transition type.
+          ease: 'linear' as const,
+        },
+      },
+    },
+  };
+
+  const emojiVariants = {
+    sway: (i: number) => ({
+      rotate: [2, -2, 2],
+      transition: {
+        duration: 3 + Math.random() * 2,
+        repeat: Infinity,
+        repeatType: 'mirror' as const,
+        // FIX: Added `as const` to fix the TypeScript error for framer-motion's Transition type.
+        ease: 'easeInOut' as const,
+        delay: i * 0.5,
+      },
+    }),
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center gap-6 text-center w-full max-w-sm p-4">
+      <div className="w-full h-48 relative overflow-hidden">
+        {/* The clothesline */}
+        <div className="absolute top-1/2 -translate-y-12 w-full h-0.5 bg-gray-400" />
+        
+        {/* The moving track for clothes */}
+        <motion.div
+          className="absolute top-1/2 -translate-y-12 w-full flex"
+          variants={marqueeVariants}
+          animate="animate"
+        >
+          {/* Render the list twice for a seamless loop */}
+          {[...clotheslineEmojis].map((emoji, index) => (
+            <motion.div
+              key={`emoji-${index}`}
+              className="flex-shrink-0 w-24 h-24 flex flex-col items-center relative"
+              custom={index}
+              variants={emojiVariants}
+              animate="sway"
+            >
+              {/* Clothespin */}
+              <div 
+                className="w-2 h-4 bg-yellow-300 border border-yellow-500 rounded-sm z-10 -mb-1"
+              />
+              <span className="text-6xl">{emoji}</span>
+            </motion.div>
+          ))}
+        </motion.div>
+      </div>
+
+      <h1 className="text-xl font-serif font-semibold text-gray-800">{message}</h1>
+      <StylingTips />
+    </div>
+  );
 };
 
 
@@ -182,7 +217,7 @@ export const StitchCardLoader = ({ message }: { message: string }) => {
 
 const tops = ['👕', '👚', '👗', '👘', '🧥'];
 const bottoms = ['👖', '🩳', '👢', '🥻', '🩱'];
-const extras = ['👠', '👟', '👜', '👒', '🕶'];
+const extras = ['👠', '👟', '👜', '👒', '🕶️'];
 
 const Reel = ({ icons, duration, isSpinning }: { icons: string[], duration: number, isSpinning: boolean }) => {
   const reelHeight = icons.length * 96; // 6rem (h-24) per icon

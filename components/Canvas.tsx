@@ -7,6 +7,7 @@ import { RotateCcwIcon, ChevronLeftIcon, ChevronRightIcon, XIcon } from './icons
 import Spinner from './Spinner';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Compare } from './ui/compare';
+import { OutfitSlotMachineLoader } from './EngagingLoader';
 
 interface CanvasProps {
   displayImageUrl: string | null;
@@ -86,7 +87,7 @@ const Canvas: React.FC<CanvasProps> = ({
   };
   
   return (
-    <div className="w-full h-full flex items-center justify-center p-4 relative animate-zoom-in group">
+    <div className="w-full flex-grow flex items-center justify-center p-4 relative animate-zoom-in group">
       {/* Start Over Button */}
       <button 
           onClick={onStartOver}
@@ -158,10 +159,7 @@ const Canvas: React.FC<CanvasProps> = ({
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
                   >
-                      <Spinner />
-                      {loadingMessage && (
-                          <p className="text-lg font-serif text-gray-700 mt-4 text-center px-4">{loadingMessage}</p>
-                      )}
+                      <OutfitSlotMachineLoader message={loadingMessage} />
                   </motion.div>
               )}
             </AnimatePresence>

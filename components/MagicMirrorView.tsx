@@ -3,21 +3,37 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// Types
+import { WardrobeItem, OutfitLayer, AnalysisResult, SavedOutfit, ChatbotContext, CartItem, ClothingCategory, BackgroundTheme } from '../types';
+import { View } from '../App';
+
+// Services
+import { 
+    generateVirtualTryOnImage, 
+    generatePoseVariation, 
+    analyzeUserProfile, 
+    getStylistRecommendations,
+    getAccessoryNudgeDecision,
+    generateBackgroundChange
+} from '../services/geminiService';
+
+// Components
 import StartScreen from './StartScreen';
 import Canvas from './Canvas';
-import RecommendationCarousel from './RecommendationCarousel';
-import AnalysisPanel from './AnalysisPanel';
 import WardrobePanel from './WardrobeModal';
-import { generateVirtualTryOnImage, generatePoseVariation, analyzeUserProfile, getStylistRecommendations, generateBackgroundChange, getAccessoryNudgeDecision } from '../services/geminiService';
-import { OutfitLayer, WardrobeItem, AnalysisResult, BackgroundTheme, ClothingCategory, SavedOutfit, ChatbotContext } from '../types';
-import { allWardrobeItems, BACKGROUND_THEMES } from '../wardrobe';
+import AnalysisPanel from './AnalysisPanel';
+import RecommendationCarousel from './RecommendationCarousel';
 import { getFriendlyErrorMessage, urlToFile, setSessionData, getSessionData, clearSessionData } from '../lib/utils';
-import { CheckCircleIcon, ChevronRightIcon, HeartIcon, HeartIconFilled, Trash2Icon, SparklesIcon, UserFocusIcon, CheckIcon, ShoppingBagIcon, PlusIcon, XIcon } from './icons';
-import Spinner from './Spinner';
-import { cn } from '../lib/utils';
+import { allWardrobeItems, BACKGROUND_THEMES } from '../wardrobe';
+import { SparklesIcon, XIcon, CheckIcon, ChevronRightIcon, PlusIcon, Trash2Icon, HeartIconFilled, HeartIcon, ShoppingBagIcon } from './icons';
 import { SwatchShuffleLoader } from './EngagingLoader';
+import Spinner from './Spinner';
+import { ProductCard } from './ProductCard';
+
+// --- Sub-Components for Magic Mirror Flow ---
 
 type MagicMirrorStep = 'start' | 'analyzing' | 'analysis_report' | 'recommendations' | 'studio';
 const STEPS_CONFIG = ['Create Model', 'AI Analysis', 'Recommendations', 'Studio'];
@@ -29,137 +45,6 @@ const stepMapping: Record<MagicMirrorStep, number> = {
     recommendations: 2,
     studio: 3,
 };
-
-type ClothingSlot = 'top' | 'bottom' | 'outerwear' | 'one-piece' | 'accessory';
-
-const layerOrder: Record<ClothingSlot, number> = {
-    'one-piece': 1,
-    'top': 2,
-    'bottom': 3,
-    'outerwear': 4,
-    'accessory': 5,
-};
-
-const getClothingSlot = (category: ClothingCategory): ClothingSlot => {
-    switch (category) {
-        case 't-shirts':
-        case 'shirts':
-        case 'tops':
-            return 'top';
-        case 'pants':
-        case 'skirts':
-            return 'bottom';
-        case 'jackets':
-        case 'coats':
-        case 'sweaters':
-            return 'outerwear';
-        case 'dresses':
-            return 'one-piece';
-        case 'accessories':
-            return 'accessory';
-        default:
-            return 'top'; // Fallback
-    }
-};
-
-const CurrentOutfitStack = ({ outfitHistory, onRemoveGarment, disabled, onAddToBag, onSaveOutfit, currentPreviewUrl }: {
-    outfitHistory: OutfitLayer[];
-    onRemoveGarment: (garmentId: string) => void;
-    disabled: boolean;
-    onAddToBag: (item: WardrobeItem) => void;
-    onSaveOutfit: (items: WardrobeItem[], previewUrl: string) => void;
-    currentPreviewUrl: string | null;
-}) => {
-    const wornItems = outfitHistory.slice(1); // Exclude the base model layer
-    const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
-
-    const handleSave = () => {
-        const itemsToSave = wornItems.map(layer => layer.garment).filter(Boolean) as WardrobeItem[];
-        if (itemsToSave.length > 0 && currentPreviewUrl) {
-            setSaveState('saving');
-            onSaveOutfit(itemsToSave, currentPreviewUrl);
-            setTimeout(() => {
-                setSaveState('saved');
-                setTimeout(() => setSaveState('idle'), 2000);
-            }, 500); // Simulate save time
-        }
-    };
-
-    return (
-        <motion.div layout className={`transition-opacity ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
-            <div className="flex justify-between items-center border-b border-gray-400/50 pb-2 mb-4">
-                <h2 className="text-base font-bold text-gray-800 tracking-wider uppercase">Current Outfit</h2>
-                <button
-                    onClick={handleSave}
-                    disabled={wornItems.length === 0 || saveState !== 'idle'}
-                    className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all duration-200 ease-in-out border-2 border-gray-300 text-gray-800 hover:bg-gray-800 hover:text-white hover:border-gray-800 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
-                >
-                    <AnimatePresence mode="wait" initial={false}>
-                        <motion.div
-                            key={saveState}
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -5 }}
-                            transition={{ duration: 0.2 }}
-                            className="flex items-center gap-1.5"
-                        >
-                            {saveState === 'idle' && <><PlusIcon className="w-3 h-3"/> Save Outfit</>}
-                            {saveState === 'saving' && <><Spinner /> Saving...</>}
-                            {saveState === 'saved' && <><CheckIcon className="w-3 h-3"/> Saved!</>}
-                        </motion.div>
-                    </AnimatePresence>
-                </button>
-            </div>
-            <div className="space-y-2">
-                 <AnimatePresence>
-                    {wornItems.length === 0 ? (
-                         <motion.p
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="text-sm text-gray-500 text-center py-2"
-                        >
-                            Your outfit is empty. Try on an item!
-                        </motion.p>
-                    ) : (
-                        wornItems.map(({ garment }) => garment && (
-                            <motion.div
-                                key={garment.id}
-                                layout
-                                initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                exit={{ opacity: 0, x: -20, transition: { duration: 0.2 } }}
-                                className="flex items-center justify-between bg-white/50 p-2 rounded-lg border border-gray-200/80 shadow-sm"
-                            >
-                                <div className="flex items-center gap-3 overflow-hidden">
-                                    <img src={garment.url} alt={garment.name} className="w-12 h-12 object-cover rounded-md flex-shrink-0" />
-                                    <span className="font-semibold text-sm text-gray-800 truncate">{garment.name}</span>
-                                </div>
-                                <div className="flex items-center">
-                                    <button
-                                        onClick={() => onAddToBag(garment)}
-                                        className="flex-shrink-0 text-gray-500 hover:text-primary-600 p-2 rounded-md hover:bg-primary-50 transition-colors"
-                                        aria-label={`Add ${garment.name} to bag`}
-                                    >
-                                        <ShoppingBagIcon className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => onRemoveGarment(garment.id)}
-                                        className="flex-shrink-0 text-gray-500 hover:text-red-600 p-2 rounded-md hover:bg-red-50 transition-colors"
-                                        aria-label={`Remove ${garment.name}`}
-                                    >
-                                        <Trash2Icon className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </motion.div>
-                        ))
-                    )}
-                </AnimatePresence>
-            </div>
-        </motion.div>
-    );
-};
-
 
 const StepIndicator = ({ currentStep, steps }: { currentStep: number; steps: string[] }) => (
     <div className="w-full max-w-2xl mx-auto py-4 flex-shrink-0">
@@ -323,44 +208,15 @@ const AnalysisReportView = ({ analysis, onNext, modelImageUrl }: {
     );
 };
 
-interface ProductCardProps {
-    item: WardrobeItem;
-    onAddToWishlist: (item: WardrobeItem) => void;
-    isWishlisted: boolean;
-}
-const ProductCard: React.FC<ProductCardProps> = ({ item, onAddToWishlist, isWishlisted }) => (
-    <motion.div
-        className="group relative"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        whileHover={{ y: -5, transition: { duration: 0.2 } }}
-    >
-        <div className="w-full overflow-hidden rounded-md bg-gray-200 group-hover:opacity-75 aspect-[2/3] transition-opacity">
-            <img
-                src={item.url}
-                alt={item.name}
-                className="h-full w-full object-cover object-center"
-            />
-        </div>
-        <div className="mt-2 flex justify-between">
-            <div>
-                <h3 className="text-sm text-gray-700 font-semibold truncate">
-                    {item.name}
-                </h3>
-                <p className="text-sm text-gray-900 font-medium">{item.price}</p>
-            </div>
-             <button
-                onClick={() => onAddToWishlist(item)}
-                className="p-1.5 text-gray-500 hover:text-primary-600 transition-colors"
-                aria-label="Add to wishlist"
-            >
-                {isWishlisted ? <HeartIconFilled className="w-5 h-5 text-primary-600" /> : <HeartIcon className="w-5 h-5" />}
-            </button>
-        </div>
-    </motion.div>
-);
-
-const RecommendationView = ({ items, onAddToWishlist, wishlist, onFinish }: { items: WardrobeItem[], onAddToWishlist: (item: WardrobeItem) => void, wishlist: WardrobeItem[], onFinish: () => void }) => {
+const RecommendationView = ({ items, onAddToWishlist, wishlist, onFinish, cartItems, onAddToBag, onRemoveFromBag }: { 
+    items: WardrobeItem[], 
+    onAddToWishlist: (item: WardrobeItem) => void, 
+    wishlist: WardrobeItem[], 
+    onFinish: () => void,
+    cartItems: CartItem[],
+    onAddToBag: (item: WardrobeItem) => void,
+    onRemoveFromBag: (itemId: string) => void,
+}) => {
     const wishlistIds = useMemo(() => new Set(wishlist.map(item => item.id)), [wishlist]);
 
     return (
@@ -389,6 +245,9 @@ const RecommendationView = ({ items, onAddToWishlist, wishlist, onFinish }: { it
                         item={item}
                         isWishlisted={wishlistIds.has(item.id)}
                         onAddToWishlist={onAddToWishlist}
+                        cartItems={cartItems}
+                        onAddToBag={onAddToBag}
+                        onRemoveFromBag={onRemoveFromBag}
                     />
                 ))}
             </motion.div>
@@ -405,6 +264,103 @@ const RecommendationView = ({ items, onAddToWishlist, wishlist, onFinish }: { it
     );
 };
 
+const CurrentOutfitStack = ({ outfitHistory, onRemoveGarment, disabled, onAddToBag, onSaveOutfit, currentPreviewUrl }: {
+    outfitHistory: OutfitLayer[];
+    onRemoveGarment: (garmentId: string) => void;
+    disabled: boolean;
+    onAddToBag: (item: WardrobeItem) => void;
+    onSaveOutfit: (items: WardrobeItem[], previewUrl: string) => void;
+    currentPreviewUrl: string | null;
+}) => {
+    const wornItems = outfitHistory.slice(1); // Exclude the base model layer
+    const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+
+    const handleSave = () => {
+        const itemsToSave = wornItems.map(layer => layer.garment).filter(Boolean) as WardrobeItem[];
+        if (itemsToSave.length > 0 && currentPreviewUrl) {
+            setSaveState('saving');
+            onSaveOutfit(itemsToSave, currentPreviewUrl);
+            setTimeout(() => {
+                setSaveState('saved');
+                setTimeout(() => setSaveState('idle'), 2000);
+            }, 500);
+        }
+    };
+
+    return (
+        <motion.div layout className={`transition-opacity ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div className="flex justify-between items-center border-b border-gray-400/50 pb-2 mb-4">
+                <h2 className="text-base font-bold text-gray-800 tracking-wider uppercase">Current Outfit</h2>
+                <button
+                    onClick={handleSave}
+                    disabled={wornItems.length === 0 || saveState !== 'idle'}
+                    className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all duration-200 ease-in-out border-2 border-gray-300 text-gray-800 hover:bg-gray-800 hover:text-white hover:border-gray-800 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
+                >
+                    <AnimatePresence mode="wait" initial={false}>
+                        <motion.div
+                            key={saveState}
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -5 }}
+                            transition={{ duration: 0.2 }}
+                            className="flex items-center gap-1.5"
+                        >
+                            {saveState === 'idle' && <><PlusIcon className="w-3 h-3"/> Save Outfit</>}
+                            {saveState === 'saving' && <><Spinner /> Saving...</>}
+                            {saveState === 'saved' && <><CheckIcon className="w-3 h-3"/> Saved!</>}
+                        </motion.div>
+                    </AnimatePresence>
+                </button>
+            </div>
+            <div className="space-y-2">
+                 <AnimatePresence>
+                    {wornItems.length === 0 ? (
+                         <motion.p
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="text-sm text-gray-500 text-center py-2"
+                        >
+                            Your outfit is empty. Try on an item!
+                        </motion.p>
+                    ) : (
+                        wornItems.map(({ garment }) => garment && (
+                            <motion.div
+                                key={garment.id}
+                                layout
+                                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, x: -20, transition: { duration: 0.2 } }}
+                                className="flex items-center justify-between bg-white/50 p-2 rounded-lg border border-gray-200/80 shadow-sm"
+                            >
+                                <div className="flex items-center gap-3 overflow-hidden">
+                                    <img src={garment.url} alt={garment.name} className="w-12 h-12 object-cover rounded-md flex-shrink-0" />
+                                    <span className="font-semibold text-sm text-gray-800 truncate">{garment.name}</span>
+                                </div>
+                                <div className="flex items-center">
+                                    <button
+                                        onClick={() => onAddToBag(garment)}
+                                        className="flex-shrink-0 text-gray-500 hover:text-primary-600 p-2 rounded-md hover:bg-primary-50 transition-colors"
+                                        aria-label={`Add ${garment.name} to bag`}
+                                    >
+                                        <ShoppingBagIcon className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => onRemoveGarment(garment.id)}
+                                        className="flex-shrink-0 text-gray-500 hover:text-red-600 p-2 rounded-md hover:bg-red-50 transition-colors"
+                                        aria-label={`Remove ${garment.name}`}
+                                    >
+                                        <Trash2Icon className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </motion.div>
+                        ))
+                    )}
+                </AnimatePresence>
+            </div>
+        </motion.div>
+    );
+};
 
 const StudioSidebar = ({
     analysis,
@@ -464,19 +420,9 @@ const StudioSidebar = ({
                 onSaveOutfit={onSaveOutfit}
                 currentPreviewUrl={currentPreviewUrl}
             />
-             {outfitHistory.slice(1).some(l => l.garment && getClothingSlot(l.garment.category) === 'one-piece') && (
-                <motion.div
-                    layout
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-primary-50 text-primary-800 text-xs p-3 rounded-lg border border-primary-200"
-                >
-                    <p><span className="font-bold">Styling Tip:</span> You're wearing a one-piece! You can layer outerwear on top.</p>
-                </motion.div>
-            )}
             <WardrobePanel
                 onGarmentSelect={(_, garmentInfo) => onGarmentChange(garmentInfo)}
-                activeGarmentIds={outfitHistory.slice(1).map(l => l.garment!.id)}
+                activeGarmentIds={outfitHistory.slice(1).map(l => l.garment?.id).filter((id): id is string => !!id)}
                 isLoading={isLoading}
                 wardrobe={wishlist}
             />
@@ -484,466 +430,521 @@ const StudioSidebar = ({
      </aside>
 );
 
+// --- Main MagicMirrorView Component ---
 
-const MagicMirrorView = ({ 
-    wishlist, 
-    onAddToWishlist, 
-    onAddToBag, 
-    poseInstructions, 
-    gender, 
-    onAnalysisComplete,
-    onSaveOutfit,
-    outfitToLoad,
-    onOutfitLoaded,
-    onChatbotContextUpdate,
-    setIsChatbotOpen,
-    itemToTryOn,
-    onItemTriedOn,
-    showToast,
-    setShowAccessoryNudge,
-}: { 
-    wishlist: WardrobeItem[], 
-    onAddToWishlist: (item: WardrobeItem) => void, 
-    onAddToBag: (item: WardrobeItem) => void,
-    poseInstructions: string[], 
-    gender: 'men' | 'women' | null, 
-    onAnalysisComplete: (result: AnalysisResult) => void; 
+interface MagicMirrorViewProps {
+    onNavigate: (view: View, options?: { gender?: 'men' | 'women'; query?: string }) => void;
+    wishlist: WardrobeItem[];
+    onAddToWishlist: (item: WardrobeItem) => void;
+    cartItems: CartItem[];
+    onAddToBag: (item: WardrobeItem) => void;
+    onRemoveFromBag: (itemId: string) => void;
+    poseInstructions: string[];
+    gender: 'men' | 'women' | null;
+    onAnalysisComplete: (result: AnalysisResult) => void;
     onSaveOutfit: (items: WardrobeItem[], previewUrl: string) => void;
     outfitToLoad: SavedOutfit | null;
     onOutfitLoaded: () => void;
-    onChatbotContextUpdate: (context: ChatbotContext) => void;
+    onChatbotContextUpdate: (context: ChatbotContext | null) => void;
     setIsChatbotOpen: (isOpen: boolean) => void;
     itemToTryOn: WardrobeItem | null;
     onItemTriedOn: () => void;
     showToast: (message: string, onUndo?: () => void) => void;
     setShowAccessoryNudge: (show: boolean) => void;
-}) => {
-  const [step, setStep] = useState<MagicMirrorStep>('start');
-  const [isImageUploadedInStart, setIsImageUploadedInStart] = useState(false);
-  const [modelImageUrl, setModelImageUrl] = useState<string | null>(null);
-  const [modelImageFile, setModelImageFile] = useState<File | null>(null);
-  const [outfitHistory, setOutfitHistory] = useState<OutfitLayer[]>([]);
-  const [comparisonIndex, setComparisonIndex] = useState<number | null>(null);
+}
 
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [currentPoseIndex, setCurrentPoseIndex] = useState(0);
-  const [currentTheme, setCurrentTheme] = useState<BackgroundTheme>(BACKGROUND_THEMES[0]);
-  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
-  const [recommendations, setRecommendations] = useState<WardrobeItem[]>([]);
-  const [isHydrated, setIsHydrated] = useState(false);
+interface MagicMirrorSession {
+    step: MagicMirrorStep;
+    userImageFile: File;
+    modelImageUrl: string;
+    outfitHistory: OutfitLayer[];
+    currentPoseIndex: number;
+    analysis: AnalysisResult;
+    recommendations: WardrobeItem[];
+}
 
-  const currentOutfit = useMemo(() => outfitHistory[outfitHistory.length - 1] || null, [outfitHistory]);
-  const displayImageUrl = useMemo(() => currentOutfit?.poseImages[poseInstructions[currentPoseIndex]] || null, [currentOutfit, currentPoseIndex, poseInstructions]);
+const SESSION_KEY = 'magicMirrorSession';
 
-    // --- SESSION PERSISTENCE ---
-    const MAGIC_MIRROR_SESSION_KEY = 'magicMirrorSession';
+const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
+    // State
+    const [step, setStep] = useState<MagicMirrorStep>('start');
+    const [sessionLoaded, setSessionLoaded] = useState(false);
+    const [isImageUploadedInStart, setIsImageUploadedInStart] = useState(false);
+    
+    const [userImageFile, setUserImageFile] = useState<File | null>(null);
+    const [modelImageUrl, setModelImageUrl] = useState<string | null>(null);
+    const [outfitHistory, setOutfitHistory] = useState<OutfitLayer[]>([]);
+    const [currentPoseIndex, setCurrentPoseIndex] = useState(0);
+    const [currentTheme, setCurrentTheme] = useState<BackgroundTheme>(BACKGROUND_THEMES[0]);
 
-    // Load session from IndexedDB on initial render
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadingMessage, setLoadingMessage] = useState('');
+    const [error, setError] = useState<string | null>(null);
+
+    const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+    const [recommendations, setRecommendations] = useState<WardrobeItem[]>([]);
+    const [isFetchingRecommendations, setIsFetchingRecommendations] = useState(false);
+
+
+    // Derived State
+    const currentOutfitLayer = useMemo(() => outfitHistory[outfitHistory.length - 1], [outfitHistory]);
+    const displayImageUrl = useMemo(() => currentOutfitLayer?.poseImages[props.poseInstructions[currentPoseIndex]] || null, [currentOutfitLayer, props.poseInstructions, currentPoseIndex]);
+    const availablePoseKeys = useMemo(() => currentOutfitLayer ? Object.keys(currentOutfitLayer.poseImages).sort((a, b) => props.poseInstructions.indexOf(a) - props.poseInstructions.indexOf(b)) : [], [currentOutfitLayer, props.poseInstructions]);
+    
+    // Session Management
     useEffect(() => {
         const loadSession = async () => {
             try {
-                const savedSession = await getSessionData<any>(MAGIC_MIRROR_SESSION_KEY);
-                if (savedSession) {
-                    const { step, modelImageUrl, outfitHistory, comparisonIndex, currentPoseIndex, currentTheme, analysis, recommendations } = savedSession;
-                    
-                    if (modelImageUrl && step !== 'start') {
-                        setStep(step);
-                        setModelImageUrl(modelImageUrl);
-                        setOutfitHistory(outfitHistory);
-                        setComparisonIndex(comparisonIndex);
-                        setCurrentPoseIndex(currentPoseIndex);
-                        setCurrentTheme(currentTheme);
-                        setAnalysis(analysis);
-                        if (analysis) onAnalysisComplete(analysis);
-                        setRecommendations(recommendations);
-                        
-                        // Re-create the model file from URL for features that need it
-                        urlToFile(modelImageUrl, 'restored-model.png').then(setModelImageFile).catch(console.error);
-                    }
+                const session: MagicMirrorSession | undefined = await getSessionData(SESSION_KEY);
+                if (session) {
+                    setStep(session.step);
+                    setUserImageFile(session.userImageFile);
+                    setModelImageUrl(session.modelImageUrl);
+                    setOutfitHistory(session.outfitHistory);
+                    setCurrentPoseIndex(session.currentPoseIndex);
+                    setAnalysis(session.analysis);
+                    setRecommendations(session.recommendations);
+                    props.onAnalysisComplete(session.analysis);
                 }
             } catch (e) {
-                console.error('Failed to load magic mirror session from IndexedDB', e);
+                console.error("Failed to load session:", e);
+                await clearSessionData(SESSION_KEY);
             } finally {
-                setIsHydrated(true);
+                setSessionLoaded(true);
             }
         };
         loadSession();
-    }, []); // Empty dependency array, runs only once on mount
+    }, []);
 
-    // Save session to IndexedDB on state change
-    useEffect(() => {
-        if (!isHydrated || step === 'start' || isLoading) {
-            return;
-        }
-        const saveSession = async () => {
+    const saveSession = useCallback(async () => {
+        if (step !== 'start' && userImageFile && modelImageUrl && outfitHistory.length > 0 && analysis) {
+            const session: MagicMirrorSession = {
+                step,
+                userImageFile,
+                modelImageUrl,
+                outfitHistory,
+                currentPoseIndex,
+                analysis,
+                recommendations,
+            };
             try {
-                const sessionToSave = { step, modelImageUrl, outfitHistory, comparisonIndex, currentPoseIndex, currentTheme, analysis, recommendations };
-                await setSessionData(MAGIC_MIRROR_SESSION_KEY, sessionToSave);
+                await setSessionData(SESSION_KEY, session);
             } catch (e) {
-                console.error('Failed to save magic mirror session to IndexedDB', e);
+                console.error("Failed to save magic mirror session", e);
             }
-        };
-        saveSession();
-    }, [isHydrated, step, modelImageUrl, outfitHistory, comparisonIndex, currentPoseIndex, currentTheme, analysis, recommendations, isLoading]);
-
+        }
+    }, [step, userImageFile, modelImageUrl, outfitHistory, currentPoseIndex, analysis, recommendations]);
 
     useEffect(() => {
-        onChatbotContextUpdate({
-            outfit: currentOutfit,
+        if (sessionLoaded) {
+            saveSession();
+        }
+    }, [sessionLoaded, saveSession]);
+    
+    // Update chatbot context when outfit or analysis changes
+    useEffect(() => {
+        props.onChatbotContextUpdate({
+            outfit: currentOutfitLayer || null,
             latestTryOnImage: displayImageUrl,
             analysis: analysis,
         });
-    }, [currentOutfit, displayImageUrl, analysis, onChatbotContextUpdate]);
-    
-    const handleGarmentChange = (garment: WardrobeItem) => {
-        if (garment.vtoSupported === false) {
-            showToast(`Virtual Try-On is not available for ${garment.subcategory || 'this item'}.`);
-            return;
+    }, [currentOutfitLayer, displayImageUrl, analysis, props.onChatbotContextUpdate]);
+
+    useEffect(() => {
+        const fetchRecommendations = async () => {
+            if (analysis && recommendations.length === 0) { // Only fetch if not already fetched
+                setIsFetchingRecommendations(true);
+                setError(null);
+                try {
+                    const detectedGender = analysis.gender;
+                    const wardrobeForGender = allWardrobeItems.filter(item => item.gender === detectedGender && item.category !== 'accessories');
+                    const stylistPrompt = `Based on my AI-driven body and skin tone analysis, suggest a few complete outfits for me, a ${detectedGender}, from the available wardrobe that would be most flattering.`;
+                    
+                    const stylistResult = await getStylistRecommendations(stylistPrompt, wardrobeForGender, detectedGender, undefined, analysis);
+                    
+                    const recommendedIds = new Set(stylistResult.recommendedProductIds);
+                    const recommendedItems = wardrobeForGender.filter(item => recommendedIds.has(item.id));
+                    
+                    if (recommendedItems.length === 0 && stylistResult.recommendedProductIds.length > 0) {
+                        console.warn("AI returned recommendations but none matched the wardrobe. This could be due to model hallucination or wardrobe mismatch.");
+                    }
+
+                    setRecommendations(recommendedItems);
+                } catch (err) {
+                    const friendlyError = getFriendlyErrorMessage(err, "Could not get recommendations");
+                    console.error("Failed to fetch recommendations:", err);
+                    setError(friendlyError);
+                    setRecommendations([]); // Ensure it's empty on error
+                } finally {
+                    setIsFetchingRecommendations(false);
+                }
+            }
+        };
+
+        if (step === 'recommendations') {
+            fetchRecommendations();
         }
-        const newSlot = getClothingSlot(garment.category);
-        let currentGarments = outfitHistory.slice(1).map(l => l.garment!);
+    }, [step, analysis]);
+
+    // This declarative effect ensures the step transition to 'analysis_report' only happens
+    // after the analysis data is confirmed to be in state, preventing a race condition.
+    useEffect(() => {
+        if (step === 'analyzing' && analysis) {
+            setStep('analysis_report');
+        }
+    }, [step, analysis]);
+
+
+    // Handlers
+    const handleStartOver = async (reason?: string) => {
+        if (reason) console.log(`Starting over due to: ${reason}`);
+        await clearSessionData(SESSION_KEY);
+        setStep('start');
+        setIsImageUploadedInStart(false);
+        setUserImageFile(null);
+        setModelImageUrl(null);
+        setOutfitHistory([]);
+        setCurrentPoseIndex(0);
+        setAnalysis(null);
+        setRecommendations([]);
+        setError(null);
+        setLoadingMessage('');
+    };
+
+    const handleModelFinalized = async (url: string, file: File, isResumed: boolean = false) => {
+        if (isResumed) {
+            const session: MagicMirrorSession | undefined = await getSessionData(SESSION_KEY);
+            if (session) {
+                setStep(session.step);
+                setUserImageFile(session.userImageFile);
+                setModelImageUrl(session.modelImageUrl);
+                setOutfitHistory(session.outfitHistory);
+                setCurrentPoseIndex(session.currentPoseIndex);
+                setAnalysis(session.analysis);
+                setRecommendations(session.recommendations);
+                props.onAnalysisComplete(session.analysis);
+                setStep('studio');
+                return;
+            } else {
+                isResumed = false; 
+            }
+        }
         
-        if (newSlot === 'one-piece') {
-            currentGarments = [];
-        } else if (newSlot === 'accessory') {
-            const newAnchor = garment.accessoryMeta?.anchor;
-            // Remove any existing accessory with the same anchor
-            currentGarments = currentGarments.filter(g => !(g.category === 'accessories' && g.accessoryMeta?.anchor === newAnchor));
-        } else {
-          if (newSlot === 'top' || newSlot === 'bottom') {
-              currentGarments = currentGarments.filter(g => getClothingSlot(g.category) !== 'one-piece');
-          }
-          currentGarments = currentGarments.filter(g => getClothingSlot(g.category) !== newSlot);
+        setModelImageUrl(url);
+        setUserImageFile(file);
+        setOutfitHistory([{ garment: null, poseImages: { [props.poseInstructions[0]]: url } }]);
+        
+        setStep('analyzing');
+        setError(null);
+        
+        try {
+            setLoadingMessage('Analyzing Your Style Profile...');
+            const analysisResult = await analyzeUserProfile(file);
+            
+            setAnalysis(analysisResult);
+            props.onAnalysisComplete(analysisResult);
+            // The step transition is now handled by a useEffect hook to prevent race conditions.
+            
+        } catch (err) {
+            const friendlyError = getFriendlyErrorMessage(err, "Analysis failed");
+            setError(friendlyError);
+            console.error(err);
+            setTimeout(() => handleStartOver(friendlyError), 3000); 
+        } finally {
+            setLoadingMessage('');
         }
+    };
+    
+    const updateOutfit = useCallback(async (newGarmentList: WardrobeItem[]) => {
+        if (!modelImageUrl || !outfitHistory[0]) return;
+        
+        setIsLoading(true);
+        setError(null);
+    
+        try {
+            const baseLayer = outfitHistory[0];
+            const newHistory: OutfitLayer[] = [baseLayer];
+            let lastImageUrl = baseLayer.poseImages[props.poseInstructions[0]] || modelImageUrl;
+    
+            for (let i = 0; i < newGarmentList.length; i++) {
+                const garmentToApply = newGarmentList[i];
+                setLoadingMessage(`Applying ${garmentToApply.name}...`);
+                const garmentFile = await urlToFile(garmentToApply.url, garmentToApply.name);
+                const newTryOnUrl = await generateVirtualTryOnImage(lastImageUrl, garmentFile, garmentToApply);
+    
+                const newLayer: OutfitLayer = {
+                    garment: garmentToApply,
+                    poseImages: { [props.poseInstructions[0]]: newTryOnUrl },
+                };
+                newHistory.push(newLayer);
+                lastImageUrl = newTryOnUrl;
+            }
+    
+            setOutfitHistory(newHistory);
+            setCurrentPoseIndex(0);
+            
+            // The accessory nudge check is now non-blocking, so it doesn't delay the UI.
+            if (newGarmentList.length > 0) {
+                const accessories = allWardrobeItems.filter(i => i.category === 'accessories');
+                getAccessoryNudgeDecision(newGarmentList, analysis, accessories).then(shouldNudge => {
+                    if (shouldNudge) {
+                        props.setShowAccessoryNudge(true);
+                    }
+                });
+            }
+    
+        } catch (err) {
+            setError(getFriendlyErrorMessage(err, 'Failed to update outfit'));
+        } finally {
+            setIsLoading(false);
+            setLoadingMessage('');
+        }
+    }, [modelImageUrl, outfitHistory, analysis, props.poseInstructions, props.setShowAccessoryNudge]);
 
+    const handleGarmentChange = (garment: WardrobeItem) => {
+        let currentGarments = outfitHistory.slice(1).map(l => l.garment!);
+
+        if (garment.category === 'accessories') {
+            // For accessories, we replace based on subcategory to allow multiple different accessories.
+            currentGarments = currentGarments.filter(g => g.subcategory !== garment.subcategory);
+        } else if (garment.category === 'dresses') {
+            // A dress replaces any clothing that isn't outerwear or another accessory.
+            currentGarments = currentGarments.filter(g => g.category === 'accessories' || g.category === 'jackets' || g.category === 'coats');
+        } else {
+            // For other clothing items (tops, bottoms, outerwear)...
+            // If we're adding a top or bottom, remove any existing dress.
+            if (['tops', 't-shirts', 'shirts', 'sweaters', 'pants', 'skirts'].includes(garment.category)) {
+                currentGarments = currentGarments.filter(g => g.category !== 'dresses');
+            }
+            // Replace any other item in the same category slot.
+            currentGarments = currentGarments.filter(g => g.category !== garment.category);
+        }
+        
         currentGarments.push(garment);
-        currentGarments.sort((a, b) => layerOrder[getClothingSlot(a.category)] - layerOrder[getClothingSlot(b.category)]);
-
         updateOutfit(currentGarments);
     };
 
-    useEffect(() => {
-        if (itemToTryOn) {
-            handleGarmentChange(itemToTryOn);
-            onItemTriedOn();
+    const handleRemoveGarment = (garmentId: string) => {
+        const newGarmentList = outfitHistory.slice(1).map(l => l.garment!).filter(g => g.id !== garmentId);
+        updateOutfit(newGarmentList);
+    };
+
+    const handleSelectPose = async (newPoseIndex: number) => {
+        if (isLoading || newPoseIndex === currentPoseIndex || !currentOutfitLayer) return;
+        const targetPoseInstruction = props.poseInstructions[newPoseIndex];
+
+        if (currentOutfitLayer.poseImages[targetPoseInstruction]) {
+            setCurrentPoseIndex(newPoseIndex);
+            return;
         }
-    }, [itemToTryOn]);
 
-  const updateOutfit = async (newGarmentList: WardrobeItem[]) => {
-      if (!modelImageUrl) return;
-      setError(null);
-      setIsLoading(true);
-      setShowAccessoryNudge(false); // Hide nudge on new update
+        setError(null);
+        setIsLoading(true);
+        setLoadingMessage(`Changing pose to: ${targetPoseInstruction}`);
+        try {
+          const baseImage = currentOutfitLayer.poseImages[props.poseInstructions[currentPoseIndex]];
+          if (!baseImage) throw new Error("No base image available.");
+    
+          const newPoseImageUrl = await generatePoseVariation(baseImage, targetPoseInstruction);
+    
+          setOutfitHistory(prev => {
+              const newHistory = [...prev];
+              newHistory[newHistory.length - 1].poseImages[targetPoseInstruction] = newPoseImageUrl;
+              return newHistory;
+          });
+          setCurrentPoseIndex(newPoseIndex);
 
-      try {
-          const oldGarments = outfitHistory.slice(1).map(l => l.garment!);
-          let firstChangeIndex = 0;
-          while (
-              firstChangeIndex < newGarmentList.length &&
-              firstChangeIndex < oldGarments.length &&
-              newGarmentList[firstChangeIndex].id === oldGarments[firstChangeIndex].id
-          ) {
-              firstChangeIndex++;
-          }
-
-          const newHistory = outfitHistory.slice(0, firstChangeIndex + 1);
-          let lastImageUrl = newHistory[newHistory.length - 1].poseImages[poseInstructions[0]];
-          if (!lastImageUrl) throw new Error("Base image for regeneration is missing.");
-
-          for (let i = firstChangeIndex; i < newGarmentList.length; i++) {
-              const garmentToApply = newGarmentList[i];
-              setLoadingMessage(`Applying ${garmentToApply.name}...`);
-              const garmentFile = await urlToFile(garmentToApply.url, garmentToApply.name);
-              const newTryOnUrl = await generateVirtualTryOnImage(lastImageUrl, garmentFile, garmentToApply);
-
-              const newLayer: OutfitLayer = {
-                  garment: garmentToApply,
-                  poseImages: { [poseInstructions[0]]: newTryOnUrl },
-              };
-              newHistory.push(newLayer);
-              lastImageUrl = newTryOnUrl;
-          }
-
-          setOutfitHistory(newHistory);
-          setCurrentPoseIndex(0);
-
-          if (newGarmentList.length > 0) {
-              const accessories = allWardrobeItems.filter(item => item.category === 'accessories');
-              const shouldNudge = await getAccessoryNudgeDecision(newGarmentList, analysis, accessories);
-              setShowAccessoryNudge(shouldNudge);
-          } else {
-              setShowAccessoryNudge(false);
-          }
-
-      } catch (err) {
-          setError(getFriendlyErrorMessage(err, 'Failed to update outfit'));
-          setShowAccessoryNudge(false);
-      } finally {
+        } catch (err) {
+          setError(getFriendlyErrorMessage(err, 'Failed to change pose'));
+        } finally {
           setIsLoading(false);
           setLoadingMessage('');
-      }
-  };
-
-  useEffect(() => {
-    if (outfitToLoad && modelImageUrl) {
-      updateOutfit(outfitToLoad.items);
-      onOutfitLoaded();
-    }
-  }, [outfitToLoad, modelImageUrl]);
-
-  const handleImageUpload = useCallback(() => {
-    setIsImageUploadedInStart(true);
-  }, []);
-
-  const handleModelFinalized = async (url: string, file: File, isResumed: boolean = false) => {
-    handleStartOver(); // Clear any existing session before starting a new one
-    
-    setModelImageUrl(url);
-    setModelImageFile(file);
-    setOutfitHistory([{ garment: null, poseImages: { [poseInstructions[0]]: url } }]);
-    
-    localStorage.setItem('previousModelUrl', url);
-
-    if (isResumed) {
-        try {
-            const storedAnalysis = localStorage.getItem('previousAnalysis');
-            const storedRecs = localStorage.getItem('previousRecommendations');
-            if (storedAnalysis && storedRecs) {
-                const parsedAnalysis = JSON.parse(storedAnalysis);
-                const parsedRecs = JSON.parse(storedRecs);
-                setAnalysis(parsedAnalysis);
-                onAnalysisComplete(parsedAnalysis);
-                setRecommendations(parsedRecs);
-                setStep('studio');
-                return;
-            }
-        } catch (err) {
-            console.error("Failed to load previous analysis data. Re-analyzing.", err);
         }
-    }
+    };
+
+    const handleSelectBackground = async (theme: BackgroundTheme) => {
+        if (isLoading || theme.id === currentTheme.id || !currentOutfitLayer || !userImageFile) return;
     
-    setIsImageUploadedInStart(false);
-    try {
-        setStep('analyzing');
         setError(null);
-
-        const analysisResult = await analyzeUserProfile(file);
-        setAnalysis(analysisResult);
-        onAnalysisComplete(analysisResult);
-
-        const detectedGender = analysisResult.gender;
-        const wardrobeForGender = allWardrobeItems.filter(item => item.gender === detectedGender);
-        const stylistPrompt = `Based on my AI-driven body and skin tone analysis, suggest a few complete outfits (${detectedGender === 'men' ? 'tops, bottoms, shirts' : 'tops, bottoms, dresses'}) for me, a ${detectedGender}, from the available wardrobe that would be most flattering.`;
-        const stylistResult = await getStylistRecommendations(stylistPrompt, wardrobeForGender, detectedGender, undefined, analysisResult);
-
-        const recommendedIds = new Set(stylistResult.recommendedProductIds);
-        const recommendedItems = wardrobeForGender.filter(item => recommendedIds.has(item.id));
-        setRecommendations(recommendedItems);
-
-        localStorage.setItem('previousAnalysis', JSON.stringify(analysisResult));
-        localStorage.setItem('previousRecommendations', JSON.stringify(recommendedItems));
-
-        setStep('analysis_report');
-
-    } catch (err) {
-        const friendlyError = getFriendlyErrorMessage(err, "Analysis failed");
-        setError(friendlyError);
-        console.error(err);
-        setTimeout(() => handleStartOver(friendlyError), 3000);
-    }
-  };
-
-  const handleRemoveGarment = (garmentId: string) => {
-      const newGarmentList = outfitHistory
-          .slice(1)
-          .map(l => l.garment!)
-          .filter(g => g.id !== garmentId);
-
-      updateOutfit(newGarmentList);
-  };
-
-  const handleSelectPose = async (newPoseIndex: number) => {
-    if (isLoading || newPoseIndex === currentPoseIndex || !currentOutfit) return;
-
-    const targetPoseInstruction = poseInstructions[newPoseIndex];
-
-    if (currentOutfit.poseImages[targetPoseInstruction]) {
-      setCurrentPoseIndex(newPoseIndex);
-      return;
-    }
-
-    setError(null);
-    setIsLoading(true);
-    setLoadingMessage(`Changing pose to: ${targetPoseInstruction}`);
-    try {
-      const baseImage = currentOutfit.poseImages[poseInstructions[currentPoseIndex]];
-      if (!baseImage) {
-        throw new Error("No base image available to generate new pose.");
-      }
-
-      const newPoseImageUrl = await generatePoseVariation(baseImage, targetPoseInstruction);
-
-      setOutfitHistory(prev => {
-          const newHistory = [...prev];
-          const lastLayer = { ...newHistory[newHistory.length - 1] };
-          lastLayer.poseImages[targetPoseInstruction] = newPoseImageUrl;
-          newHistory[newHistory.length - 1] = lastLayer;
-          return newHistory;
-      });
-      setCurrentPoseIndex(newPoseIndex);
-
-    } catch (err) {
-      setError(getFriendlyErrorMessage(err, 'Failed to change pose'));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSelectBackground = async (theme: BackgroundTheme) => {
-    if (isLoading || theme.id === currentTheme.id || !currentOutfit || !modelImageFile) {
-        if (!modelImageFile) console.warn("Cannot change background: model image file is missing.");
-        return;
-    };
-
-    setError(null);
-    setIsLoading(true);
-    setLoadingMessage(`Changing background to ${theme.name}...`);
-    try {
-        const baseImage = outfitHistory[outfitHistory.length - 1].poseImages[poseInstructions[currentPoseIndex]];
-        if (!baseImage) throw new Error("Current outfit image not available for background change.");
-
-        const newImageUrl = await generateBackgroundChange(baseImage, theme.prompt);
-
-        setOutfitHistory(prev => {
-          const newHistory = [...prev];
-          const lastLayer = { ...newHistory[newHistory.length - 1] };
-          lastLayer.poseImages[poseInstructions[currentPoseIndex]] = newImageUrl;
-          newHistory[newHistory.length - 1] = lastLayer;
-          return newHistory;
-        });
-
-        setCurrentTheme(theme);
-    } catch (err) {
-        setError(getFriendlyErrorMessage(err, 'Failed to change background'));
-    } finally {
-        setIsLoading(false);
-    }
-  };
-
-  const handleStartOver = (reason?: string) => {
-    if (reason) {
-      console.log(`Starting over due to: ${reason}`);
-    }
-    clearSessionData(MAGIC_MIRROR_SESSION_KEY).catch(e => console.error('Failed to clear session data', e));
+        setIsLoading(true);
+        setLoadingMessage(`Changing background to ${theme.name}...`);
+        try {
+            const baseImage = outfitHistory[outfitHistory.length - 1].poseImages[props.poseInstructions[currentPoseIndex]];
+            if (!baseImage) throw new Error("Current outfit image not available for background change.");
     
-    setStep('start');
-    setIsImageUploadedInStart(false);
-    setModelImageUrl(null);
-    setModelImageFile(null);
-    setOutfitHistory([]);
-    setComparisonIndex(null);
-    setIsLoading(false);
-    setLoadingMessage('');
-    setError(null);
-    setCurrentPoseIndex(0);
-    setCurrentTheme(BACKGROUND_THEMES[0]);
-    setAnalysis(null);
-    setRecommendations([]);
-  };
-
-  const renderContent = () => {
-    const motionProps = {
-        initial: { opacity: 0, x: 30 },
-        animate: { opacity: 1, x: 0 },
-        exit: { opacity: 0, x: -30 },
-        transition: { duration: 0.5, ease: 'easeInOut' as const },
-        className: "w-full h-full flex flex-col items-center justify-center"
+            const newImageUrl = await generateBackgroundChange(baseImage, theme.prompt);
+    
+            setOutfitHistory(prev => {
+              const newHistory = [...prev];
+              const lastLayer = { ...newHistory[newHistory.length - 1] };
+              lastLayer.poseImages[props.poseInstructions[currentPoseIndex]] = newImageUrl;
+              newHistory[newHistory.length - 1] = lastLayer;
+              return newHistory;
+            });
+    
+            setCurrentTheme(theme);
+        } catch (err) {
+            setError(getFriendlyErrorMessage(err, 'Failed to change background'));
+        } finally {
+            setIsLoading(false);
+            setLoadingMessage('');
+        }
     };
     
-    if (!isHydrated) {
+    useEffect(() => {
+        if (props.outfitToLoad && modelImageUrl) {
+            updateOutfit(props.outfitToLoad.items);
+            props.onOutfitLoaded();
+        }
+    }, [props.outfitToLoad, modelImageUrl, updateOutfit, props.onOutfitLoaded]);
+
+    useEffect(() => {
+        if (props.itemToTryOn) {
+            handleGarmentChange(props.itemToTryOn);
+            props.onItemTriedOn();
+        }
+    }, [props.itemToTryOn, props.onItemTriedOn]);
+
+    const renderContent = () => {
+        const motionProps = {
+            initial: { opacity: 0, x: 30 },
+            animate: { opacity: 1, x: 0 },
+            exit: { opacity: 0, x: -30 },
+            transition: { duration: 0.5, ease: 'easeInOut' as const },
+            className: "w-full h-full flex flex-col items-center justify-center"
+        };
+    
+        switch(step) {
+          case 'start':
+            // FIX: Pass key prop separately to avoid React warnings with spread props.
+            return <motion.div key={step} {...motionProps}><StartScreen onModelFinalized={handleModelFinalized} onImageUpload={() => setIsImageUploadedInStart(true)} /></motion.div>;
+          case 'analyzing':
+            return (
+                <motion.div key={step} {...motionProps}>
+                    <SwatchShuffleLoader message={loadingMessage} />
+                    {error && <p className="text-red-600 bg-red-100 p-2 rounded-md text-sm mt-2">{error}</p>}
+                </motion.div>
+            );
+          case 'analysis_report':
+            if (!analysis) return null;
+            return <motion.div key={step} {...motionProps}><AnalysisReportView analysis={analysis} onNext={() => setStep('recommendations')} modelImageUrl={modelImageUrl} /></motion.div>;
+          case 'recommendations':
+            if (isFetchingRecommendations) {
+                return (
+                    <motion.div key="rec-loading" {...motionProps}>
+                        <SwatchShuffleLoader message="Curating your personal collection..." />
+                    </motion.div>
+                );
+            }
+        
+            if (error) {
+                 return (
+                    <motion.div key="rec-error" {...motionProps} className="w-full h-full flex flex-col items-center justify-center text-center p-8">
+                        <h2 className="text-2xl font-serif font-bold text-gray-800">Oops! Something went wrong.</h2>
+                        <p className="mt-2 text-gray-600 max-w-md">{error}</p>
+                        <button 
+                            onClick={() => setStep('studio')}
+                            className="mt-6 px-6 py-2 text-sm font-semibold text-white bg-primary-600 rounded-md hover:bg-primary-700 transition-colors"
+                        >
+                            Skip to Studio
+                        </button>
+                    </motion.div>
+                );
+            }
+            
+            if (recommendations.length > 0) {
+                return (
+                    <motion.div key="rec-view" {...motionProps}>
+                        <RecommendationView 
+                            items={recommendations} 
+                            onAddToWishlist={props.onAddToWishlist} 
+                            wishlist={props.wishlist} 
+                            onFinish={() => setStep('studio')} 
+                            cartItems={props.cartItems} 
+                            onAddToBag={props.onAddToBag} 
+                            onRemoveFromBag={props.onRemoveFromBag} 
+                        />
+                    </motion.div>
+                );
+            }
+        
+            // Fallback if no recommendations were found but no error occurred
+            return (
+                <motion.div key="rec-fallback" {...motionProps} className="w-full h-full flex flex-col items-center justify-center text-center p-8">
+                    <h2 className="text-2xl font-serif font-bold text-gray-800">We couldn't find specific recommendations.</h2>
+                    <p className="mt-2 text-gray-600 max-w-md">Don't worry, you can still explore and try on anything you like in the virtual studio!</p>
+                    <button 
+                        onClick={() => setStep('studio')}
+                        className="mt-6 px-6 py-2 text-sm font-semibold text-white bg-primary-600 rounded-md hover:bg-primary-700 transition-colors"
+                    >
+                        Enter Studio
+                    </button>
+                </motion.div>
+            );
+          case 'studio':
+            if (!modelImageUrl || !currentOutfitLayer) return null;
+            return (
+              <motion.div key={step} {...motionProps} className="w-full h-full">
+                <div className="w-full h-full flex flex-col md:flex-row bg-transparent overflow-hidden">
+                    <StudioSidebar
+                        analysis={analysis}
+                        outfitHistory={outfitHistory}
+                        onRemoveGarment={handleRemoveGarment}
+                        wishlist={props.wishlist}
+                        onGarmentChange={handleGarmentChange}
+                        isLoading={isLoading}
+                        currentTheme={currentTheme}
+                        onSelectBackground={handleSelectBackground}
+                        onAddToBag={props.onAddToBag}
+                        onSaveOutfit={props.onSaveOutfit}
+                        currentPreviewUrl={displayImageUrl}
+                    />
+                    <main className="flex-grow h-full flex flex-col bg-transparent min-h-0 min-w-0">
+                        <Canvas
+                          displayImageUrl={displayImageUrl}
+                          onStartOver={() => handleStartOver()}
+                          isLoading={isLoading}
+                          loadingMessage={loadingMessage}
+                          onSelectPose={handleSelectPose}
+                          poseInstructions={props.poseInstructions}
+                          currentPoseIndex={currentPoseIndex}
+                          availablePoseKeys={availablePoseKeys}
+                          isComparing={false}
+                          comparisonImageUrl={null}
+                          onExitCompare={() => {}}
+                        />
+                        {recommendations.length > 0 && (
+                          <RecommendationCarousel
+                            items={recommendations}
+                            onSelect={handleGarmentChange}
+                            wishlist={props.wishlist}
+                            onAddToWishlist={props.onAddToWishlist}
+                            currentGarmentId={currentOutfitLayer.garment?.id}
+                          />
+                        )}
+                    </main>
+                </div>
+              </motion.div>
+            );
+          default:
+            return null;
+        }
+    };
+    
+    if (!sessionLoaded) {
         return <div className="w-full h-full flex items-center justify-center"><Spinner /></div>;
     }
 
-    switch(step) {
-      case 'start':
-        return <motion.div key={step} {...motionProps}><StartScreen onModelFinalized={handleModelFinalized} onImageUpload={handleImageUpload} /></motion.div>;
-      case 'analyzing':
-        return (
-            <motion.div key={step} {...motionProps} className="w-full h-full flex flex-col items-center justify-center bg-white/50 backdrop-blur-md">
-                <SwatchShuffleLoader message="Analyzing Your Style Profile..." />
-                {error && <p className="text-red-600 bg-red-100 p-2 rounded-md text-sm mt-8">{error}</p>}
-            </motion.div>
-        );
-      case 'analysis_report':
-        if (!analysis) return null;
-        return <motion.div key={step} {...motionProps}><AnalysisReportView analysis={analysis} onNext={() => setStep('recommendations')} modelImageUrl={modelImageUrl} /></motion.div>;
-      case 'recommendations':
-        return <motion.div key={step} {...motionProps}><RecommendationView items={recommendations} onAddToWishlist={onAddToWishlist} wishlist={wishlist} onFinish={() => setStep('studio')} /></motion.div>;
-      case 'studio':
-        if (!modelImageUrl || !currentOutfit) return null;
-        const availablePoseKeys = currentOutfit ? Object.keys(currentOutfit.poseImages).sort((a,b) => poseInstructions.indexOf(a) - poseInstructions.indexOf(b)) : [];
-        const comparisonImageUrl = comparisonIndex !== null ? outfitHistory[comparisonIndex]?.poseImages[poseInstructions[currentPoseIndex]] : null;
-        
-        return (
-          <motion.div key={step} {...motionProps} className="w-full h-full">
-            <div className="w-full h-full flex flex-col md:flex-row bg-transparent overflow-hidden">
-                <StudioSidebar
-                    analysis={analysis}
-                    outfitHistory={outfitHistory}
-                    onRemoveGarment={handleRemoveGarment}
-                    wishlist={wishlist}
-                    onGarmentChange={handleGarmentChange}
-                    isLoading={isLoading}
-                    currentTheme={currentTheme}
-                    onSelectBackground={handleSelectBackground}
-                    onAddToBag={onAddToBag}
-                    onSaveOutfit={onSaveOutfit}
-                    currentPreviewUrl={displayImageUrl}
-                />
-                <main className="flex-grow h-full flex flex-col bg-transparent min-w-0 overflow-hidden">
-                    <Canvas
-                      displayImageUrl={displayImageUrl}
-                      onStartOver={() => handleStartOver()}
-                      isLoading={isLoading}
-                      loadingMessage={loadingMessage}
-                      onSelectPose={handleSelectPose}
-                      poseInstructions={poseInstructions}
-                      currentPoseIndex={currentPoseIndex}
-                      availablePoseKeys={availablePoseKeys}
-                      isComparing={comparisonIndex !== null && comparisonImageUrl !== null}
-                      comparisonImageUrl={comparisonImageUrl}
-                      onExitCompare={() => setComparisonIndex(null)}
-                    />
-                    {recommendations.length > 0 && (
-                      <RecommendationCarousel
-                        items={recommendations}
-                        onSelect={handleGarmentChange}
-                        wishlist={wishlist}
-                        onAddToWishlist={onAddToWishlist}
-                        currentGarmentId={currentOutfit.garment?.id}
-                      />
-                    )}
-                </main>
-            </div>
-          </motion.div>
-        );
-      default:
-        return null;
-    }
-  };
-
-  return (
-    <div className="w-full h-full flex-grow flex flex-col bg-transparent relative overflow-hidden">
-      {(step !== 'start' || isImageUploadedInStart) && <StepIndicator currentStep={stepMapping[step]} steps={STEPS_CONFIG} />}
-      <div className="flex-grow flex items-center justify-center p-4 relative z-10 overflow-hidden">
-        <AnimatePresence mode="wait">
-            {renderContent()}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
+    return (
+        <div className="w-full h-full flex-grow flex flex-col bg-transparent relative overflow-hidden">
+          {(step !== 'start' || isImageUploadedInStart) && <StepIndicator currentStep={stepMapping[step]} steps={STEPS_CONFIG} />}
+          <div className="flex-grow flex items-center justify-center p-4 relative z-10 overflow-hidden">
+            <AnimatePresence mode="wait">
+                {renderContent()}
+            </AnimatePresence>
+          </div>
+        </div>
+    );
 };
 
 export default MagicMirrorView;
