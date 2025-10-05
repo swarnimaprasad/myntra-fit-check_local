@@ -327,6 +327,7 @@ export const App = () => {
     const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
     const [outfitToLoad, setOutfitToLoad] = useState<SavedOutfit | null>(null);
     const [itemToTryOn, setItemToTryOn] = useState<WardrobeItem | null>(null);
+    const [forceMagicMirrorReset, setForceMagicMirrorReset] = useState(false);
 
     // Chatbot state
     const [isChatbotOpen, setIsChatbotOpen] = useState(false);
@@ -385,7 +386,11 @@ export const App = () => {
             setSearchQuery(options.query);
         }
         
-        // This logic is handled inside the render function now
+        // Set force reset flag when navigating to magic_mirror from outside
+        if (targetView === 'magic_mirror' && view !== 'magic_mirror') {
+            setForceMagicMirrorReset(true);
+        }
+        
         setView(targetView);
     };
 
@@ -592,6 +597,9 @@ export const App = () => {
                     onItemTriedOn={() => setItemToTryOn(null)}
                     showToast={showToast}
                     setShowAccessoryNudge={setShowAccessoryNudge}
+                    forceReset={forceMagicMirrorReset}
+                    onResetProcessed={() => setForceMagicMirrorReset(false)}
+                    currentView={view}
                 />;
             case 'wishlist':
                 return <WishlistView wishlist={wishlist} onRemoveFromWishlist={handleRemoveFromWishlist} onMoveToCart={handleMoveToCart} {...props} />;

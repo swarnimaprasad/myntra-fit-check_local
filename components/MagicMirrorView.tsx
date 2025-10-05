@@ -451,6 +451,9 @@ interface MagicMirrorViewProps {
     onItemTriedOn: () => void;
     showToast: (message: string, onUndo?: () => void) => void;
     setShowAccessoryNudge: (show: boolean) => void;
+    forceReset?: boolean;
+    onResetProcessed?: () => void;
+    currentView?: View;
 }
 
 interface MagicMirrorSession {
@@ -483,8 +486,6 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
 
     const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
     const [recommendations, setRecommendations] = useState<WardrobeItem[]>([]);
-    const [isFetchingRecommendations, setIsFetchingRecommendations] = useState(false);
-
 
     // Derived State
     const currentOutfitLayer = useMemo(() => outfitHistory[outfitHistory.length - 1], [outfitHistory]);
@@ -495,6 +496,14 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
     useEffect(() => {
         const loadSession = async () => {
             try {
+                // If forceReset is true, clear any existing session and start fresh
+                if (props.forceReset) {
+                    await clearSessionData(SESSION_KEY);
+                    setSessionLoaded(true);
+                    props.onResetProcessed?.(); // Notify parent that reset was processed
+                    return;
+                }
+                
                 const session: MagicMirrorSession | undefined = await getSessionData(SESSION_KEY);
                 if (session) {
                     setStep(session.step);
@@ -514,10 +523,10 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
             }
         };
         loadSession();
-    }, []);
+    }, [props.forceReset]);
 
     const saveSession = useCallback(async () => {
-        if (step !== 'start' && userImageFile && modelImageUrl && outfitHistory.length > 0 && analysis) {
+        if (step !== 'start' && userImageFile && modelImageUrl && outfitHistory.length > 0 && analysis && recommendations.length > 0) {
             const session: MagicMirrorSession = {
                 step,
                 userImageFile,
@@ -549,51 +558,6 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
             analysis: analysis,
         });
     }, [currentOutfitLayer, displayImageUrl, analysis, props.onChatbotContextUpdate]);
-
-    useEffect(() => {
-        const fetchRecommendations = async () => {
-            if (analysis && recommendations.length === 0) { // Only fetch if not already fetched
-                setIsFetchingRecommendations(true);
-                setError(null);
-                try {
-                    const detectedGender = analysis.gender;
-                    const wardrobeForGender = allWardrobeItems.filter(item => item.gender === detectedGender && item.category !== 'accessories');
-                    const stylistPrompt = `Based on my AI-driven body and skin tone analysis, suggest a few complete outfits for me, a ${detectedGender}, from the available wardrobe that would be most flattering.`;
-                    
-                    const stylistResult = await getStylistRecommendations(stylistPrompt, wardrobeForGender, detectedGender, undefined, analysis);
-                    
-                    const recommendedIds = new Set(stylistResult.recommendedProductIds);
-                    const recommendedItems = wardrobeForGender.filter(item => recommendedIds.has(item.id));
-                    
-                    if (recommendedItems.length === 0 && stylistResult.recommendedProductIds.length > 0) {
-                        console.warn("AI returned recommendations but none matched the wardrobe. This could be due to model hallucination or wardrobe mismatch.");
-                    }
-
-                    setRecommendations(recommendedItems);
-                } catch (err) {
-                    const friendlyError = getFriendlyErrorMessage(err, "Could not get recommendations");
-                    console.error("Failed to fetch recommendations:", err);
-                    setError(friendlyError);
-                    setRecommendations([]); // Ensure it's empty on error
-                } finally {
-                    setIsFetchingRecommendations(false);
-                }
-            }
-        };
-
-        if (step === 'recommendations') {
-            fetchRecommendations();
-        }
-    }, [step, analysis]);
-
-    // This declarative effect ensures the step transition to 'analysis_report' only happens
-    // after the analysis data is confirmed to be in state, preventing a race condition.
-    useEffect(() => {
-        if (step === 'analyzing' && analysis) {
-            setStep('analysis_report');
-        }
-    }, [step, analysis]);
-
 
     // Handlers
     const handleStartOver = async (reason?: string) => {
@@ -632,7 +596,8 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
         
         setModelImageUrl(url);
         setUserImageFile(file);
-        setOutfitHistory([{ garment: null, poseImages: { [props.poseInstructions[0]]: url } }]);
+        const firstPose = props.poseInstructions[0];
+        setOutfitHistory([{ garment: null, poseImages: { [firstPose]: url } }]);
         
         setStep('analyzing');
         setError(null);
@@ -641,10 +606,25 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
             setLoadingMessage('Analyzing Your Style Profile...');
             const analysisResult = await analyzeUserProfile(file);
             
+            setLoadingMessage('Curating Your Recommendations...');
+            const detectedGender = analysisResult.gender;
+            const wardrobeForGender = allWardrobeItems.filter(item => item.gender === detectedGender && item.category !== 'accessories');
+            const stylistPrompt = `Based on my AI-driven body and skin tone analysis, suggest a few complete outfits for me, a ${detectedGender}, from the available wardrobe that would be most flattering.`;
+            const stylistResult = await getStylistRecommendations(stylistPrompt, wardrobeForGender, detectedGender, undefined, analysisResult);
+            const recommendedIds = new Set(stylistResult.recommendedProductIds);
+            const recommendedItems = wardrobeForGender.filter(item => recommendedIds.has(item.id));
+            
+            console.log('📋 Analysis result received:', analysisResult);
+            console.log('🎯 Recommendations received:', recommendedItems.length, 'items');
+            
+            // Set data and immediately set step to analysis_report
             setAnalysis(analysisResult);
             props.onAnalysisComplete(analysisResult);
-            // The step transition is now handled by a useEffect hook to prevent race conditions.
+            setRecommendations(recommendedItems);
+            setStep('analysis_report');
             
+            console.log('✅ Step set to analysis_report');
+
         } catch (err) {
             const friendlyError = getFriendlyErrorMessage(err, "Analysis failed");
             setError(friendlyError);
@@ -683,7 +663,7 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
             setOutfitHistory(newHistory);
             setCurrentPoseIndex(0);
             
-            // The accessory nudge check is now non-blocking, so it doesn't delay the UI.
+            // FIX: The accessory nudge check is now non-blocking, so it doesn't delay the UI.
             if (newGarmentList.length > 0) {
                 const accessories = allWardrobeItems.filter(i => i.category === 'accessories');
                 getAccessoryNudgeDecision(newGarmentList, analysis, accessories).then(shouldNudge => {
@@ -807,6 +787,7 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
 
     const renderContent = () => {
         const motionProps = {
+            key: step,
             initial: { opacity: 0, x: 30 },
             animate: { opacity: 1, x: 0 },
             exit: { opacity: 0, x: -30 },
@@ -816,75 +797,23 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
     
         switch(step) {
           case 'start':
-            // FIX: Pass key prop separately to avoid React warnings with spread props.
-            return <motion.div key={step} {...motionProps}><StartScreen onModelFinalized={handleModelFinalized} onImageUpload={() => setIsImageUploadedInStart(true)} /></motion.div>;
+            return <motion.div {...motionProps}><StartScreen onModelFinalized={handleModelFinalized} onImageUpload={() => setIsImageUploadedInStart(true)} /></motion.div>;
           case 'analyzing':
             return (
-                <motion.div key={step} {...motionProps}>
+                <motion.div {...motionProps}>
                     <SwatchShuffleLoader message={loadingMessage} />
                     {error && <p className="text-red-600 bg-red-100 p-2 rounded-md text-sm mt-2">{error}</p>}
                 </motion.div>
             );
           case 'analysis_report':
             if (!analysis) return null;
-            return <motion.div key={step} {...motionProps}><AnalysisReportView analysis={analysis} onNext={() => setStep('recommendations')} modelImageUrl={modelImageUrl} /></motion.div>;
+            return <motion.div {...motionProps}><AnalysisReportView analysis={analysis} onNext={() => setStep('recommendations')} modelImageUrl={modelImageUrl} /></motion.div>;
           case 'recommendations':
-            if (isFetchingRecommendations) {
-                return (
-                    <motion.div key="rec-loading" {...motionProps}>
-                        <SwatchShuffleLoader message="Curating your personal collection..." />
-                    </motion.div>
-                );
-            }
-        
-            if (error) {
-                 return (
-                    <motion.div key="rec-error" {...motionProps} className="w-full h-full flex flex-col items-center justify-center text-center p-8">
-                        <h2 className="text-2xl font-serif font-bold text-gray-800">Oops! Something went wrong.</h2>
-                        <p className="mt-2 text-gray-600 max-w-md">{error}</p>
-                        <button 
-                            onClick={() => setStep('studio')}
-                            className="mt-6 px-6 py-2 text-sm font-semibold text-white bg-primary-600 rounded-md hover:bg-primary-700 transition-colors"
-                        >
-                            Skip to Studio
-                        </button>
-                    </motion.div>
-                );
-            }
-            
-            if (recommendations.length > 0) {
-                return (
-                    <motion.div key="rec-view" {...motionProps}>
-                        <RecommendationView 
-                            items={recommendations} 
-                            onAddToWishlist={props.onAddToWishlist} 
-                            wishlist={props.wishlist} 
-                            onFinish={() => setStep('studio')} 
-                            cartItems={props.cartItems} 
-                            onAddToBag={props.onAddToBag} 
-                            onRemoveFromBag={props.onRemoveFromBag} 
-                        />
-                    </motion.div>
-                );
-            }
-        
-            // Fallback if no recommendations were found but no error occurred
-            return (
-                <motion.div key="rec-fallback" {...motionProps} className="w-full h-full flex flex-col items-center justify-center text-center p-8">
-                    <h2 className="text-2xl font-serif font-bold text-gray-800">We couldn't find specific recommendations.</h2>
-                    <p className="mt-2 text-gray-600 max-w-md">Don't worry, you can still explore and try on anything you like in the virtual studio!</p>
-                    <button 
-                        onClick={() => setStep('studio')}
-                        className="mt-6 px-6 py-2 text-sm font-semibold text-white bg-primary-600 rounded-md hover:bg-primary-700 transition-colors"
-                    >
-                        Enter Studio
-                    </button>
-                </motion.div>
-            );
+            return <motion.div {...motionProps}><RecommendationView items={recommendations} onAddToWishlist={props.onAddToWishlist} wishlist={props.wishlist} onFinish={() => setStep('studio')} cartItems={props.cartItems} onAddToBag={props.onAddToBag} onRemoveFromBag={props.onRemoveFromBag} /></motion.div>;
           case 'studio':
             if (!modelImageUrl || !currentOutfitLayer) return null;
             return (
-              <motion.div key={step} {...motionProps} className="w-full h-full">
+              <motion.div {...motionProps} className="w-full h-full">
                 <div className="w-full h-full flex flex-col md:flex-row bg-transparent overflow-hidden">
                     <StudioSidebar
                         analysis={analysis}
@@ -943,6 +872,81 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
                 {renderContent()}
             </AnimatePresence>
           </div>
+          
+          {/* Top-level overlay for analysis report to ensure visibility above other overlays */}
+          {props.currentView === 'magic_mirror' && step === 'analysis_report' && analysis && (
+            <div className="fixed top-20 left-0 right-0 bottom-0 z-[80] bg-white/95 backdrop-blur-sm">
+              <div className="w-full h-full flex items-center justify-center p-4">
+                <AnalysisReportView 
+                  analysis={analysis} 
+                  onNext={() => setStep('recommendations')} 
+                  modelImageUrl={modelImageUrl} 
+                />
+              </div>
+            </div>
+          )}
+          
+          {/* Top-level overlay for recommendations to ensure visibility above other overlays */}
+          {props.currentView === 'magic_mirror' && step === 'recommendations' && recommendations.length > 0 && (
+            <div className="fixed top-20 left-0 right-0 bottom-0 z-[80] bg-white/95 backdrop-blur-sm">
+              <div className="w-full h-full flex items-center justify-center p-4">
+                <RecommendationView 
+                  items={recommendations} 
+                  onAddToWishlist={props.onAddToWishlist} 
+                  wishlist={props.wishlist} 
+                  onFinish={() => setStep('studio')} 
+                  cartItems={props.cartItems} 
+                  onAddToBag={props.onAddToBag} 
+                  onRemoveFromBag={props.onRemoveFromBag} 
+                />
+              </div>
+            </div>
+          )}
+          
+          {/* Top-level overlay for studio to ensure visibility above other overlays */}
+          {props.currentView === 'magic_mirror' && step === 'studio' && modelImageUrl && currentOutfitLayer && (
+            <div className="fixed top-20 left-0 right-0 bottom-0 z-[80] bg-white overflow-auto">
+              <div className="w-full min-h-full flex flex-col md:flex-row bg-transparent">
+                <StudioSidebar
+                  analysis={analysis}
+                  outfitHistory={outfitHistory}
+                  onRemoveGarment={handleRemoveGarment}
+                  wishlist={props.wishlist}
+                  onGarmentChange={handleGarmentChange}
+                  isLoading={isLoading}
+                  currentTheme={currentTheme}
+                  onSelectBackground={handleSelectBackground}
+                  onAddToBag={props.onAddToBag}
+                  onSaveOutfit={props.onSaveOutfit}
+                  currentPreviewUrl={displayImageUrl}
+                />
+                <main className="flex-grow min-h-0 flex flex-col bg-transparent">
+                  <Canvas
+                    displayImageUrl={displayImageUrl}
+                    onStartOver={() => handleStartOver()}
+                    isLoading={isLoading}
+                    loadingMessage={loadingMessage}
+                    onSelectPose={handleSelectPose}
+                    poseInstructions={props.poseInstructions}
+                    currentPoseIndex={currentPoseIndex}
+                    availablePoseKeys={availablePoseKeys}
+                    isComparing={false}
+                    comparisonImageUrl={null}
+                    onExitCompare={() => {}}
+                  />
+                  {recommendations.length > 0 && (
+                    <RecommendationCarousel
+                      items={recommendations}
+                      onSelect={handleGarmentChange}
+                      wishlist={props.wishlist}
+                      onAddToWishlist={props.onAddToWishlist}
+                      currentGarmentId={currentOutfitLayer.garment?.id}
+                    />
+                  )}
+                </main>
+              </div>
+            </div>
+          )}
         </div>
     );
 };
