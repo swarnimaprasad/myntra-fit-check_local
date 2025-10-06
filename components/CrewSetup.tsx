@@ -20,7 +20,7 @@ async function createCrewSession(sessionData: { name: string; vibe: string }, me
     ...sessionData,
     members: {
       [memberId]: { 
-        name: "Creator",
+        name: "Member 1",
         joinedAt: Date.now(),
         modelImageUrl: null,
         hasCreatedModel: false

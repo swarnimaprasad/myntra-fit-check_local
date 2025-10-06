@@ -18,20 +18,14 @@ import { StitchCardLoader } from './EngagingLoader';
 import { db } from '../firebaseConfig';
 import { ref, push, onValue, set, off } from 'firebase/database';
 
-const ShareModal = ({ isOpen, onClose, crew }: { isOpen: boolean, onClose: () => void, crew: Crew }) => {
+const ShareModal = ({ isOpen, onClose, crew, crewId }: { isOpen: boolean, onClose: () => void, crew: Crew, crewId: string | null }) => {
     const [copySuccess, setCopySuccess] = useState('');
     
     const shareUrl = useMemo(() => {
-        if (!crew) return '';
-        try {
-            // Use encodeURIComponent instead of btoa to handle Unicode characters
-            const encoded = encodeURIComponent(JSON.stringify(crew));
-            return `${window.location.origin}${window.location.pathname}?crew_session=${encoded}`;
-        } catch (e) {
-            console.error("Failed to create share URL", e);
-            return 'Could not generate share link.';
-        }
-    }, [crew]);
+        if (!crewId) return '';
+        // Use the same format as CrewSetup: /crew/:crewId
+        return `${window.location.origin}/crew/${crewId}`;
+    }, [crewId]);
 
     const handleCopy = () => {
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -361,13 +355,22 @@ const CrewStudio: React.FC<CrewStudioProps> = ({ crew, setCrew, wishlist, poseIn
     const unsubscribe = onValue(crewMembersRef, (snapshot) => {
       const data = snapshot.val();
       
+      console.log('🔥 Firebase members snapshot received:', data);
+      
       if (data) {
         // Update crew with the latest member data from Firebase
         setCrew(prevCrew => {
           if (!prevCrew) return null;
           
-          // Convert Firebase object to array if needed
-          const firebaseMembers = Array.isArray(data) ? data : Object.values(data);
+          // Firebase stores members as object with keys being member IDs
+          // Extract members with their IDs from the Firebase keys
+          const firebaseMembers = Object.entries(data).map(([key, value]: [string, any]) => ({
+            ...value,
+            id: value.id || key // Use value.id if it exists, otherwise use the Firebase key
+          }));
+          
+          console.log('📥 Firebase members:', firebaseMembers.map((m: any) => `${m.name}(${m.id})`).join(', '));
+          console.log('💾 Local members:', prevCrew.members.map(m => `${m.name}(${m.id})`).join(', '));
           
           // Merge Firebase data with existing local state to preserve structure
           const mergedMembers = prevCrew.members.map((localMember) => {
@@ -377,20 +380,50 @@ const CrewStudio: React.FC<CrewStudioProps> = ({ crew, setCrew, wishlist, poseIn
               return {
                 ...localMember,
                 modelImageUrl: firebaseMember.modelImageUrl || localMember.modelImageUrl,
-                hasCreatedModel: firebaseMember.hasCreatedModel || localMember.hasCreatedModel,
+                hasCreatedModel: firebaseMember.hasCreatedModel ?? localMember.hasCreatedModel,
                 name: firebaseMember.name || localMember.name
               };
             }
             return localMember;
           });
           
+          // Add any new members from Firebase that don't exist locally
+          const localMemberIds = new Set(prevCrew.members.map(m => m.id));
+          const newMembers = firebaseMembers.filter((fm: any) => {
+            // Only add if ID doesn't exist locally AND it's a valid unique ID
+            return fm.id && !localMemberIds.has(fm.id);
+          });
+          
+          // Initialize new members with proper structure
+          const initializedNewMembers = newMembers.map((fm: any) => ({
+            id: fm.id,
+            name: fm.name || 'New Member',
+            modelImageUrl: fm.modelImageUrl ?? null,
+            hasCreatedModel: fm.hasCreatedModel ?? false,
+            outfitHistory: fm.outfitHistory || [],
+            poseIndex: fm.poseIndex ?? 0,
+            wishlist: fm.wishlist || []
+          }));
+          
+          // Ensure no duplicate IDs in the final array
+          const allMembers = [...mergedMembers, ...initializedNewMembers];
+          const uniqueMembers = Array.from(
+            new Map(allMembers.map(m => [m.id, m])).values()
+          );
+          
+          // Sort by ID to ensure consistent ordering for comparison
+          const sortedUniqueMembers = uniqueMembers.sort((a, b) => a.id.localeCompare(b.id));
+          const sortedPrevMembers = [...prevCrew.members].sort((a, b) => a.id.localeCompare(b.id));
+          
           // Only update if members have actually changed to avoid infinite loops
-          const hasChanges = JSON.stringify(prevCrew.members) !== JSON.stringify(mergedMembers);
+          const hasChanges = JSON.stringify(sortedPrevMembers) !== JSON.stringify(sortedUniqueMembers);
           
           if (hasChanges) {
+            console.log('🔄 Updating crew members from Firebase:', uniqueMembers.length, 'unique members');
+            console.log('📊 Member IDs:', uniqueMembers.map(m => m.id).join(', '));
             return {
               ...prevCrew,
-              members: mergedMembers
+              members: uniqueMembers
             };
           }
           
@@ -402,13 +435,15 @@ const CrewStudio: React.FC<CrewStudioProps> = ({ crew, setCrew, wishlist, poseIn
     return () => off(crewMembersRef, 'value', unsubscribe);
   }, [crewId, setCrew]);
 
-  // Sync crew data to Firebase when it changes
+  // Sync crew data to Firebase when it changes (excluding members to avoid conflicts)
   useEffect(() => {
     if (!crew || !crewId) return;
 
     const crewRef = ref(db, `crews/${crewId}`);
+    // Don't sync members here - they're synced separately to avoid duplicates
+    const { members, ...crewDataWithoutMembers } = crew;
     const crewData = {
-      ...crew,
+      ...crewDataWithoutMembers,
       id: crewId,
       lastUpdated: Date.now()
     };
@@ -417,6 +452,32 @@ const CrewStudio: React.FC<CrewStudioProps> = ({ crew, setCrew, wishlist, poseIn
       console.error('Failed to sync crew data to Firebase:', error);
     });
   }, [crew, crewId]);
+  
+  // Sync members to Firebase separately
+  useEffect(() => {
+    if (!crew || !crewId || !crew.members) return;
+
+    const crewMembersRef = ref(db, `crews/${crewId}/members`);
+    // Convert members array to object with member IDs as keys
+    const membersObject = crew.members.reduce((acc, member) => {
+      acc[member.id] = {
+        id: member.id,
+        name: member.name,
+        modelImageUrl: member.modelImageUrl,
+        hasCreatedModel: member.hasCreatedModel,
+        poseIndex: member.poseIndex,
+        outfitHistory: member.outfitHistory || [],
+        wishlist: member.wishlist || []
+      };
+      return acc;
+    }, {} as Record<string, any>);
+    
+    console.log('📤 Syncing', crew.members.length, 'members to Firebase:', crew.members.map(m => m.name).join(', '));
+    
+    set(crewMembersRef, membersObject).catch(error => {
+      console.error('Failed to sync members to Firebase:', error);
+    });
+  }, [JSON.stringify(crew?.members?.map(m => ({ id: m.id, name: m.name, hasCreatedModel: m.hasCreatedModel }))), crewId]);
   
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -447,7 +508,7 @@ const CrewStudio: React.FC<CrewStudioProps> = ({ crew, setCrew, wishlist, poseIn
       return {
         ...prevCrew,
         members: prevCrew.members.map(m =>
-          m.id === memberId ? { ...m, modelImageUrl: url, outfitHistory: [{ garment: null, poseImages: { [poseInstructions[0]]: url } }] } : m
+          m.id === memberId ? { ...m, modelImageUrl: url, hasCreatedModel: true, outfitHistory: [{ garment: null, poseImages: { [poseInstructions[0]]: url } }] } : m
         ),
       };
     });
@@ -458,6 +519,8 @@ const CrewStudio: React.FC<CrewStudioProps> = ({ crew, setCrew, wishlist, poseIn
             console.error("Failed to save model URL to localStorage", e);
         }
     }
+    // Clear memberForModelCreation to prevent duplicate creation
+    setMemberForModelCreation(null);
     // The useEffect hook will handle advancing to the next member for creation.
     setActiveMemberId(memberId);
   };
@@ -577,8 +640,16 @@ const CrewStudio: React.FC<CrewStudioProps> = ({ crew, setCrew, wishlist, poseIn
         setGroupPhotoError(null);
         try {
             const memberImages = crew.members.map(member => {
-                const currentLayer = member.outfitHistory[member.outfitHistory.length - 1];
-                return currentLayer.poseImages[poseInstructions[member.poseIndex]] || member.modelImageUrl!;
+                // Check if outfitHistory exists and has items
+                if (member.outfitHistory && member.outfitHistory.length > 0) {
+                    const currentLayer = member.outfitHistory[member.outfitHistory.length - 1];
+                    // Check if poseImages exists
+                    if (currentLayer.poseImages && currentLayer.poseImages[poseInstructions[member.poseIndex || 0]]) {
+                        return currentLayer.poseImages[poseInstructions[member.poseIndex || 0]];
+                    }
+                }
+                // Fallback to modelImageUrl
+                return member.modelImageUrl!;
             });
             const url = await generateGroupPhoto(crew.vibe, memberImages);
             setGroupPhotoUrl(url);
@@ -592,14 +663,23 @@ const CrewStudio: React.FC<CrewStudioProps> = ({ crew, setCrew, wishlist, poseIn
     const handleAddMember = () => {
         setCrew(prev => {
             if (!prev) return null;
+            
+            // Generate unique ID with timestamp + random string to prevent collisions
+            const uniqueId = `member-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
             const newMember: CrewMember = {
-                id: `member-${Date.now()}`,
+                id: uniqueId,
                 name: `Member ${prev.members.length + 1}`,
                 modelImageUrl: null,
+                hasCreatedModel: false,
                 outfitHistory: [],
                 poseIndex: 0,
                 wishlist: [],
             };
+            
+            console.log('➕ Adding new member:', newMember.id, newMember.name);
+            console.log('📊 Total members before add:', prev.members.length);
+            
             const newCrew = { ...prev, members: [...prev.members, newMember] };
             setMemberForModelCreation(newMember.id);
             setActiveMemberId(newMember.id);
@@ -671,7 +751,7 @@ const CrewStudio: React.FC<CrewStudioProps> = ({ crew, setCrew, wishlist, poseIn
                     Back to Studio
                 </button>
                 <div className="text-center mb-8">
-                    <h1 className="text-2xl font-serif font-bold">Create Model for {memberForModel.name}</h1>
+                    <h1 className="text-2xl font-serif font-bold">Create Model for Member</h1>
                 </div>
                 <StartScreen 
                     onModelFinalized={(url, file) => handleModelFinalized(memberForModel.id, url, file)}
@@ -684,7 +764,7 @@ const CrewStudio: React.FC<CrewStudioProps> = ({ crew, setCrew, wishlist, poseIn
     return (
         <div className="w-full h-full flex-grow flex flex-col bg-gray-100/50 relative overflow-hidden">
              <AnimatePresence>
-                <ShareModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} crew={crew}/>
+                <ShareModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} crew={crew} crewId={crewId}/>
              </AnimatePresence>
              <AnimatePresence>
                 <SendToChatModal 

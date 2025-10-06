@@ -11,39 +11,24 @@ import { ProductCard } from './ProductCard';
 
 interface OutfitCardProps {
   outfit: SavedOutfit;
-  isExpanded: boolean;
   onExpand: () => void;
   onUpdateName: (outfitId: string, newName: string) => void;
   onDelete: (outfitId: string) => void;
   onTryOn: (outfit: SavedOutfit) => void;
   onAddOutfitToBag: (outfit: SavedOutfit) => void;
-  wishlist: WardrobeItem[];
-  onAddToWishlist: (item: WardrobeItem) => void;
-  cartItems: CartItem[];
-  onAddToCart: (item: WardrobeItem) => void;
-  // FIX: Changed prop name to onRemoveFromBag for consistency.
-  onRemoveFromBag: (itemId: string) => void;
 }
 
 const OutfitCard: React.FC<OutfitCardProps> = ({ 
     outfit, 
-    isExpanded,
     onExpand,
     onUpdateName, 
     onDelete, 
     onTryOn, 
     onAddOutfitToBag,
-    wishlist,
-    onAddToWishlist,
-    cartItems,
-    onAddToCart,
-    // FIX: Changed prop name to onRemoveFromBag for consistency.
-    onRemoveFromBag
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [name, setName] = useState(outfit.name);
     const inputRef = useRef<HTMLInputElement>(null);
-    const wishlistIds = useMemo(() => new Set(wishlist.map(item => item.id)), [wishlist]);
 
     useEffect(() => {
         if (isEditing) {
@@ -133,31 +118,6 @@ const OutfitCard: React.FC<OutfitCardProps> = ({
                     </div>
                 </div>
             </div>
-            <AnimatePresence>
-                {isExpanded && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                        className="overflow-hidden"
-                    >
-                        <div className="p-4 border-t bg-gray-50 grid grid-cols-2 gap-4">
-                           {outfit.items.map(item => (
-                               <ProductCard
-                                   key={item.id}
-                                   item={item}
-                                   isWishlisted={wishlistIds.has(item.id)}
-                                   onAddToWishlist={onAddToWishlist}
-                                   onAddToBag={onAddToCart}
-                                   onRemoveFromBag={onRemoveFromBag}
-                                   cartItems={cartItems}
-                               />
-                           ))}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
         </motion.div>
     );
 };
@@ -174,16 +134,19 @@ interface OutfitsViewProps {
     onAddToWishlist: (item: WardrobeItem) => void;
     cartItems: CartItem[];
     onAddToCart: (item: WardrobeItem) => void;
-    // FIX: Changed prop name to onRemoveFromBag for consistency.
     onRemoveFromBag: (itemId: string) => void;
 }
 
 const OutfitsView: React.FC<OutfitsViewProps> = (props) => {
-    const [expandedOutfitId, setExpandedOutfitId] = useState<string | null>(null);
+    const [selectedOutfit, setSelectedOutfit] = useState<SavedOutfit | null>(null);
+    const wishlistIds = useMemo(() => new Set(props.wishlist.map(item => item.id)), [props.wishlist]);
+
+    console.log('👗 OutfitsView rendered with', props.outfits.length, 'outfits:', props.outfits);
 
     return (
-        <div className="w-full max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <h1 className="text-3xl font-bold font-serif text-gray-900">My Saved Outfits</h1>
+        <div className="w-full max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-8 min-h-screen bg-gray-50">
+            <h1 className="text-3xl font-bold font-serif text-gray-900 mb-6">My Saved Outfits</h1>
+            <p className="text-sm text-gray-600 mb-4">Total outfits: {props.outfits.length}</p>
             {props.outfits.length > 0 ? (
                 <motion.div 
                     layout
@@ -194,9 +157,11 @@ const OutfitsView: React.FC<OutfitsViewProps> = (props) => {
                             <OutfitCard
                                 key={outfit.id}
                                 outfit={outfit}
-                                isExpanded={expandedOutfitId === outfit.id}
-                                onExpand={() => setExpandedOutfitId(prev => prev === outfit.id ? null : outfit.id)}
-                                {...props}
+                                onExpand={() => setSelectedOutfit(outfit)}
+                                onUpdateName={props.onUpdateName}
+                                onDelete={props.onDelete}
+                                onTryOn={props.onTryOn}
+                                onAddOutfitToBag={props.onAddOutfitToBag}
                             />
                         ))}
                     </AnimatePresence>
@@ -213,6 +178,48 @@ const OutfitsView: React.FC<OutfitsViewProps> = (props) => {
                     </button>
                 </div>
             )}
+             <AnimatePresence>
+                {selectedOutfit && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                        onClick={() => setSelectedOutfit(null)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.9, y: 20 }}
+                            className="bg-white rounded-xl shadow-2xl w-full max-w-2xl p-6 relative flex flex-col max-h-[90vh]"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="flex justify-between items-start mb-4">
+                                <div>
+                                    <h2 className="text-2xl font-serif font-bold text-gray-800">{selectedOutfit.name}</h2>
+                                    <p className="text-sm text-gray-500">{selectedOutfit.items.length} items</p>
+                                </div>
+                                <button onClick={() => setSelectedOutfit(null)} className="p-1 rounded-full text-gray-400 hover:text-gray-800 hover:bg-gray-100">
+                                    <XIcon className="w-5 h-5"/>
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 overflow-y-auto p-1">
+                                {selectedOutfit.items.map(item => (
+                                    <ProductCard
+                                        key={item.id}
+                                        item={item}
+                                        isWishlisted={wishlistIds.has(item.id)}
+                                        onAddToWishlist={props.onAddToWishlist}
+                                        onAddToBag={props.onAddToCart}
+                                        onRemoveFromBag={props.onRemoveFromBag}
+                                        cartItems={props.cartItems}
+                                    />
+                                ))}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

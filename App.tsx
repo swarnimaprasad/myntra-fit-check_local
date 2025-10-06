@@ -324,7 +324,31 @@ export const App = () => {
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [isBagOpen, setIsBagOpen] = useState(false);
     const [crew, setCrew] = useState<Crew | null>(null);
-    const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
+    const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>(() => {
+        try {
+            const stored = localStorage.getItem('savedOutfits');
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                // If the stored data is too large, clear it and start fresh
+                if (stored.length > 4000000) { // ~4MB
+                    console.warn('⚠️ Clearing large savedOutfits from localStorage');
+                    localStorage.removeItem('savedOutfits');
+                    return [];
+                }
+                // Add a fallback preview URL using the first item's image
+                return parsed.map((outfit: any) => ({
+                    ...outfit,
+                    previewUrl: outfit.previewUrl || (outfit.items && outfit.items[0] ? outfit.items[0].url : '')
+                }));
+            }
+            return [];
+        } catch (e) {
+            console.error('Failed to load saved outfits from localStorage', e);
+            // Clear corrupted data
+            localStorage.removeItem('savedOutfits');
+            return [];
+        }
+    });
     const [outfitToLoad, setOutfitToLoad] = useState<SavedOutfit | null>(null);
     const [itemToTryOn, setItemToTryOn] = useState<WardrobeItem | null>(null);
     const [forceMagicMirrorReset, setForceMagicMirrorReset] = useState(false);
@@ -358,6 +382,24 @@ export const App = () => {
             }
         }
     }, []); // Run only on mount
+
+    // Persist saved outfits to localStorage
+    useEffect(() => {
+        try {
+            // Don't persist preview URLs (they're too large for localStorage)
+            // Only persist the outfit metadata
+            const outfitsToStore = savedOutfits.map(outfit => ({
+                id: outfit.id,
+                name: outfit.name,
+                items: outfit.items,
+                // Omit previewUrl to avoid QuotaExceededError
+            }));
+            localStorage.setItem('savedOutfits', JSON.stringify(outfitsToStore));
+            console.log('✅ Saved', savedOutfits.length, 'outfits to localStorage (without preview images)');
+        } catch (e) {
+            console.error('Failed to save outfits to localStorage', e);
+        }
+    }, [savedOutfits]);
 
     // Keep the main user's crew wishlist in sync with the app's wishlist
     useEffect(() => {
@@ -474,6 +516,7 @@ export const App = () => {
                         id,
                         name: memberData.name,
                         modelImageUrl: memberData.modelImageUrl || null,
+                        hasCreatedModel: memberData.hasCreatedModel ?? false,
                         outfitHistory: [],
                         poseIndex: 0,
                         wishlist: id === memberId ? wishlist : [], // Only current user gets the wishlist
@@ -509,6 +552,7 @@ export const App = () => {
                 id: 'member-1',
                 name: 'Me',
                 modelImageUrl: null,
+                hasCreatedModel: false,
                 outfitHistory: [],
                 poseIndex: 0,
                 wishlist: wishlist,
@@ -528,7 +572,12 @@ export const App = () => {
             items,
             previewUrl,
         };
-        setSavedOutfits(prev => [newOutfit, ...prev]);
+        console.log('💾 Saving outfit:', newOutfit);
+        setSavedOutfits(prev => {
+            const updated = [newOutfit, ...prev];
+            console.log('📦 Updated savedOutfits:', updated);
+            return updated;
+        });
     };
     
     const handleUpdateOutfitName = (outfitId: string, newName: string) => {

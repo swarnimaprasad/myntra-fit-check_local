@@ -78,6 +78,7 @@ export interface CrewMember {
   id:string;
   name: string;
   modelImageUrl: string | null;
+  hasCreatedModel: boolean;
   outfitHistory: OutfitLayer[];
   poseIndex: number;
   wishlist: WardrobeItem[]; // Each member has their own personal wishlist

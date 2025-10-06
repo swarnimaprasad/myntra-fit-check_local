@@ -385,7 +385,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ analysis, wardrobe, isOpen, setIsOpen
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 10, scale: 0.9 }}
                         transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                        className="fixed bottom-24 right-6 z-[60] origin-bottom-right"
+                        className="fixed bottom-24 left-6 z-[60] origin-bottom-left"
                     >
                         <button 
                             onClick={() => { setIsOpen(true); setShowAccessoryNudge(false); }}
@@ -404,7 +404,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ analysis, wardrobe, isOpen, setIsOpen
                     setIsOpen(!isOpen);
                     setShowAccessoryNudge(false);
                 }}
-                className="fixed bottom-6 right-6 z-[60] bg-primary-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center group"
+                className="fixed bottom-6 left-6 z-[60] bg-primary-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center group"
                 aria-label="Open chatbot"
             >
                 <span className="absolute -top-8 -left-2 bg-gray-800 text-white text-xs font-bold px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">AI Stylist</span>
@@ -428,7 +428,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ analysis, wardrobe, isOpen, setIsOpen
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 20, scale: 0.95 }}
                         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                        className="fixed bottom-24 right-6 z-[55] w-80 h-[440px] bg-white rounded-2xl shadow-2xl border flex flex-col overflow-hidden"
+                        className="fixed bottom-24 left-6 z-[55] w-80 h-[440px] bg-white rounded-2xl shadow-2xl border flex flex-col overflow-hidden"
                     >
                         <header className="flex-shrink-0 p-4 bg-gray-50 border-b flex justify-between items-center">
                             <div className="flex items-center gap-2">
