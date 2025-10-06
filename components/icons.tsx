@@ -576,6 +576,8 @@ export const HangerIcon = (props: React.SVGProps<SVGSVGElement>) => (
        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
        <path d="M14.004 6.8a3 3 0 1 0 -5.196 -2.316"></path>
        <path d="M4 12l1.764 2.646a2 2 0 0 0 1.636 .854h9.2a2 2 0 0 0 1.636 -.854l1.764 -2.646"></path>
+       <path d="M9 12h6"></path>
+       <path d="M12 7v5"></path>
     </svg>
 );
 

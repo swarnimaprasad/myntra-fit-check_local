@@ -94,7 +94,7 @@ const Header: React.FC<HeaderProps> = ({ onNavigate, wishlistCount, bagCount, on
             </NavItem>
             <NavItem isActive={currentView === 'outfits'} onClick={() => onNavigate('outfits')}>
                 <div className="flex items-center gap-1.5">
-                    <HangerIcon className="w-5 h-5" />
+                    <HangerIcon className="w-5 h-5 mt-0.5" />
                     <span>Outfits</span>
                 </div>
             </NavItem>

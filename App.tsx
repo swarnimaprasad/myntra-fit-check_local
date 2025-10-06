@@ -71,7 +71,7 @@ const WelcomeView = ({ onSelectGender, onNavigate, promptForGender }: { onSelect
           className="relative rounded-lg overflow-hidden shadow-xl cursor-pointer"
           onClick={() => onSelectGender('women')}
         >
-          <img src="https://i.postimg.cc/mD4D2Z5B/vicky-hladynets-C8-Ta0gw-Pb-Q-unsplash.jpg" alt="Women's Collection" className="w-full md:w-80 h-96 object-cover" />
+          <img src="https://instaloverz.com/wp-content/uploads/2016/07/18-edgy-womens-fashion.jpg" alt="Women's Collection" className="w-full md:w-80 h-96 object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-6">
             <h2 className="text-3xl font-serif font-bold text-white">Women's Collection</h2>
           </div>
@@ -82,7 +82,7 @@ const WelcomeView = ({ onSelectGender, onNavigate, promptForGender }: { onSelect
           className="relative rounded-lg overflow-hidden shadow-xl cursor-pointer"
           onClick={() => onSelectGender('men')}
         >
-          <img src="https://i.postimg.cc/W3d7b7k8/christian-bolt-Db-I2-Ka-FXv-Q-unsplash.jpg" alt="Men's Collection" className="w-full md:w-80 h-96 object-cover" />
+          <img src="https://th.bing.com/th/id/OIP.pF3lWCVpfhn1Hj99Bvn1qAHaLH?o=7&cb=12rm=3&rs=1&pid=ImgDetMain&o=7&rm=3" alt="Men's Collection" className="w-full md:w-80 h-96 object-cover" />
            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-6">
             <h2 className="text-3xl font-serif font-bold text-white">Men's Collection</h2>
           </div>

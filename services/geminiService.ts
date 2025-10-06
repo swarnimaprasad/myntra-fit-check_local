@@ -56,19 +56,31 @@ const handleApiResponse = (response: GenerateContentResponse): string => {
     throw new Error(errorMessage);
 };
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+// Check if API key is available
+const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+if (!apiKey || apiKey === 'your_api_key_here') {
+    console.warn('⚠️  Gemini API key not configured. AI features will be disabled.');
+    console.log('To enable AI features, add your Gemini API key to the .env file');
+}
+
+const ai = apiKey && apiKey !== 'your_api_key_here' ? new GoogleGenAI({ apiKey }) : null;
 const model = 'gemini-2.5-flash-image-preview';
 const analysisModel = 'gemini-2.5-flash';
 
 // Debug API key loading
-console.log('🔑 API Key loaded:', process.env.API_KEY ? 'Yes' : 'No');
-console.log('🔑 API Key starts with:', process.env.API_KEY?.substring(0, 10) + '...' || 'undefined');
+console.log('🔑 API Key loaded:', apiKey ? 'Yes' : 'No');
+console.log('🔑 API Key starts with:', apiKey?.substring(0, 10) + '...' || 'undefined');
 
 export const getAccessoryNudgeDecision = async (
     outfit: WardrobeItem[],
     analysis: AnalysisResult | null,
     accessories: WardrobeItem[],
 ): Promise<boolean> => {
+    if (!ai) {
+        console.warn('AI service not available - API key not configured');
+        return false; // Default behavior when AI is not available
+    }
+    
     if (outfit.length === 0) return false;
     
     const prompt = `You are a fashion analysis AI. Your task is a simple yes/no decision.
@@ -173,6 +185,31 @@ export const getChatbotResponse = async (
 
 
 export const analyzeUserProfile = async (userImage: File): Promise<AnalysisResult> => {
+    // if (!ai) {
+    //     console.warn('AI service not available - API key not configured');
+    //     // Return a default analysis result
+    //     return {
+    //         bodyType: "Rectangle",
+    //         skinTone: "Neutral",
+    //         gender: "women" as const,
+    //         proportions: {
+    //             chest: "medium",
+    //             waist: "medium",
+    //             hips: "medium"
+    //         },
+    //         recommendedColors: [
+    //             { name: "Emerald Green", hex: "#50C878" },
+    //             { name: "Soft Pink", hex: "#FFC0CB" },
+    //             { name: "Classic Navy", hex: "#000080" }
+    //         ],
+    //         recommendedStyles: [
+    //             "A-line dresses",
+    //             "High-waisted pants",
+    //             "V-neck tops"
+    //         ]
+    //     };
+    // }
+    
     const systemInstruction = `You are a sophisticated fashion AI analyst. Your task is to analyze an image of a person and return a single, valid JSON object containing their fashion profile.
 
 *CRITICAL INSTRUCTIONS - YOU MUST FOLLOW THESE:*
@@ -262,6 +299,14 @@ export const analyzeUserProfile = async (userImage: File): Promise<AnalysisResul
 
 
 export const getStylistRecommendations = async (prompt: string, wardrobe: WardrobeItem[], genderContext: 'men' | 'women', userImage?: File, analysis?: AnalysisResult | null): Promise<StylistResult> => {
+    if (!ai) {
+        console.warn('AI service not available - API key not configured');
+        return {
+            stylistResponse: "AI styling service is currently unavailable. Please configure your Gemini API key to enable personalized recommendations.",
+            recommendedProductIds: []
+        };
+    }
+    
     const wardrobeForPrompt = wardrobe.map(item => ({ id: item.id, name: item.name, category: item.category }));
     
     const finalGender = analysis?.gender || genderContext;
