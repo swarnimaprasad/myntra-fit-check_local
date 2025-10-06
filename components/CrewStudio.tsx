@@ -352,6 +352,56 @@ const CrewStudio: React.FC<CrewStudioProps> = ({ crew, setCrew, wishlist, poseIn
     return () => off(sharedWishlistRef, 'value', unsubscribe);
   }, [crewId, crew?.id, setCrew]);
 
+  // Real-time Firebase synchronization for crew member data (including model photos)
+  useEffect(() => {
+    if (!crewId) return;
+
+    const crewMembersRef = ref(db, `crews/${crewId}/members`);
+    
+    const unsubscribe = onValue(crewMembersRef, (snapshot) => {
+      const data = snapshot.val();
+      
+      if (data) {
+        // Update crew with the latest member data from Firebase
+        setCrew(prevCrew => {
+          if (!prevCrew) return null;
+          
+          // Convert Firebase object to array if needed
+          const firebaseMembers = Array.isArray(data) ? data : Object.values(data);
+          
+          // Merge Firebase data with existing local state to preserve structure
+          const mergedMembers = prevCrew.members.map((localMember) => {
+            const firebaseMember = firebaseMembers.find((fm: any) => fm.id === localMember.id);
+            if (firebaseMember) {
+              // Only update specific fields from Firebase, keep local structure intact
+              return {
+                ...localMember,
+                modelImageUrl: firebaseMember.modelImageUrl || localMember.modelImageUrl,
+                hasCreatedModel: firebaseMember.hasCreatedModel || localMember.hasCreatedModel,
+                name: firebaseMember.name || localMember.name
+              };
+            }
+            return localMember;
+          });
+          
+          // Only update if members have actually changed to avoid infinite loops
+          const hasChanges = JSON.stringify(prevCrew.members) !== JSON.stringify(mergedMembers);
+          
+          if (hasChanges) {
+            return {
+              ...prevCrew,
+              members: mergedMembers
+            };
+          }
+          
+          return prevCrew;
+        });
+      }
+    });
+
+    return () => off(crewMembersRef, 'value', unsubscribe);
+  }, [crewId, setCrew]);
+
   // Sync crew data to Firebase when it changes
   useEffect(() => {
     if (!crew || !crewId) return;
@@ -695,7 +745,7 @@ const CrewStudio: React.FC<CrewStudioProps> = ({ crew, setCrew, wishlist, poseIn
                                         <p className="font-semibold text-gray-900 truncate">{member.name}</p>
                                     )}
                                 </div>
-                                {member.id !== crew.members[0].id && editingMemberId !== member.id && (
+                                {editingMemberId !== member.id && (
                                      <div onClick={(e) => {e.stopPropagation(); setEditingMemberId(member.id); }} className="text-gray-400 hover:text-gray-800 p-1 opacity-0 group-hover:opacity-100 cursor-pointer rounded hover:bg-gray-200 transition-colors">
                                         <PencilIcon className="w-3 h-3"/>
                                     </div>

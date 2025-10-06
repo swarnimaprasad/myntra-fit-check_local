@@ -67,12 +67,55 @@ const CrewSetup: React.FC<CrewSetupProps> = ({ onCreateCrew }) => {
     return () => unsubscribe();
   }, [crewId]);
 
-  // Function to share crew link on WhatsApp
-  function shareCrewLink(crewId: string) {
+  // State for copy button feedback
+  const [copyButtonText, setCopyButtonText] = useState('Copy Link');
+
+  // Function to copy link to clipboard
+  const handleCopyLink = (crewId: string) => {
     const link = `${window.location.origin}/crew/${crewId}`;
-    const message = `Join my Style Crew! Let's coordinate our outfits together: ${link}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`);
-  }
+    
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link)
+        .then(() => {
+          setCopyButtonText('Copied!');
+          setTimeout(() => setCopyButtonText('Copy Link'), 2000);
+        })
+        .catch(err => {
+          console.error('Failed to copy to clipboard:', err);
+          // Fallback method
+          fallbackCopyTextToClipboard(link);
+        });
+    } else {
+      // Fallback for older browsers
+      fallbackCopyTextToClipboard(link);
+    }
+  };
+
+  // Fallback copy method for older browsers
+  const fallbackCopyTextToClipboard = (text: string) => {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.top = '0';
+    textArea.style.left = '0';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    try {
+      const successful = document.execCommand('copy');
+      if (successful) {
+        setCopyButtonText('Copied!');
+        setTimeout(() => setCopyButtonText('Copy Link'), 2000);
+      }
+    } catch (err) {
+      console.error('Fallback: Could not copy text', err);
+      alert('Failed to copy link. Please copy it manually.');
+    }
+    
+    document.body.removeChild(textArea);
+  };
 
   // Handle form submit and create crew session in Firebase
   const handleSubmit = async (e: React.FormEvent) => {
@@ -216,44 +259,13 @@ const CrewSetup: React.FC<CrewSetupProps> = ({ onCreateCrew }) => {
                     className="w-full px-3 py-2 border rounded text-gray-700 text-sm"
                     onClick={e => (e.target as HTMLInputElement).select()}
                   />
-                  <div className="flex gap-2 w-full">
-                    <button
-                      type="button"
-                      className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold text-sm"
-                      onClick={() => shareCrewLink(crewId)}
-                    >
-                      Share on WhatsApp
-                    </button>
-                    <button
-                      type="button"
-                      className="flex-1 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 font-semibold text-sm"
-                      onClick={() => {
-                        const link = `${window.location.origin}/crew/${crewId}`;
-                        if (navigator.clipboard && navigator.clipboard.writeText) {
-                          navigator.clipboard.writeText(link).catch(err => {
-                            console.error('Failed to copy to clipboard:', err);
-                            // Fallback: create a temporary input element
-                            const textArea = document.createElement('textarea');
-                            textArea.value = link;
-                            document.body.appendChild(textArea);
-                            textArea.select();
-                            document.execCommand('copy');
-                            document.body.removeChild(textArea);
-                          });
-                        } else {
-                          // Fallback for older browsers
-                          const textArea = document.createElement('textarea');
-                          textArea.value = link;
-                          document.body.appendChild(textArea);
-                          textArea.select();
-                          document.execCommand('copy');
-                          document.body.removeChild(textArea);
-                        }
-                      }}
-                    >
-                      Copy Link
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    className="w-full px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 font-semibold text-sm transition-colors"
+                    onClick={() => handleCopyLink(crewId)}
+                  >
+                    {copyButtonText}
+                  </button>
                 </div>
               </div>
 
