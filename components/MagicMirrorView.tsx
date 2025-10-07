@@ -525,6 +525,14 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
         loadSession();
     }, [props.forceReset]);
 
+    // Reset to 'start' when navigating away from Magic Mirror
+    useEffect(() => {
+        if (props.currentView !== 'magic_mirror' && step !== 'start') {
+            console.log('🔄 Navigating away from Magic Mirror - resetting overlays');
+            // Don't change step here, just let the component unmount naturally
+        }
+    }, [props.currentView, step]);
+
     const saveSession = useCallback(async () => {
         if (step !== 'start' && userImageFile && modelImageUrl && outfitHistory.length > 0 && analysis && recommendations.length > 0) {
             const session: MagicMirrorSession = {
@@ -873,9 +881,18 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
             </AnimatePresence>
           </div>
           
-          {/* Top-level overlay for analysis report to ensure visibility above other overlays */}
-          {props.currentView === 'magic_mirror' && step === 'analysis_report' && analysis && (
-            <div className="fixed top-20 left-0 right-0 bottom-0 z-[80] bg-white/95 backdrop-blur-sm">
+          {/* Top-level overlays wrapped in AnimatePresence for proper cleanup */}
+          <AnimatePresence mode="wait">
+            {/* Top-level overlay for analysis report to ensure visibility above other overlays */}
+            {props.currentView === 'magic_mirror' && step === 'analysis_report' && analysis && (
+              <motion.div 
+                key="analysis-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="fixed top-20 left-0 right-0 bottom-0 z-[80] bg-white/95 backdrop-blur-sm"
+              >
               <div className="w-full h-full flex items-center justify-center p-4">
                 <AnalysisReportView 
                   analysis={analysis} 
@@ -883,12 +900,19 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
                   modelImageUrl={modelImageUrl} 
                 />
               </div>
-            </div>
+            </motion.div>
           )}
           
           {/* Top-level overlay for recommendations to ensure visibility above other overlays */}
           {props.currentView === 'magic_mirror' && step === 'recommendations' && recommendations.length > 0 && (
-            <div className="fixed top-20 left-0 right-0 bottom-0 z-[80] bg-white/95 backdrop-blur-sm">
+            <motion.div 
+              key="recommendations-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed top-20 left-0 right-0 bottom-0 z-[80] bg-white/95 backdrop-blur-sm"
+            >
               <div className="w-full h-full flex items-center justify-center p-4">
                 <RecommendationView 
                   items={recommendations} 
@@ -900,12 +924,19 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
                   onRemoveFromBag={props.onRemoveFromBag} 
                 />
               </div>
-            </div>
+            </motion.div>
           )}
           
           {/* Top-level overlay for studio to ensure visibility above other overlays */}
           {props.currentView === 'magic_mirror' && step === 'studio' && modelImageUrl && currentOutfitLayer && (
-            <div className="fixed top-20 left-0 right-0 bottom-0 z-[80] bg-white overflow-auto">
+            <motion.div 
+              key="studio-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed top-20 left-0 right-0 bottom-0 z-[80] bg-white overflow-auto"
+            >
               <div className="w-full min-h-full flex flex-col md:flex-row bg-transparent">
                 <StudioSidebar
                   analysis={analysis}
@@ -945,8 +976,9 @@ const MagicMirrorView: React.FC<MagicMirrorViewProps> = (props) => {
                   )}
                 </main>
               </div>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
         </div>
     );
 };
