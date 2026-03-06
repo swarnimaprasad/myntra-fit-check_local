@@ -25,7 +25,7 @@ import { getDatabase } from "firebase/database";
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyDnEL6m_JoQcfkhkBhlDonxhpi09nvBJFw",
+  apiKey: "",
   authDomain: "myntra-hackerramp-db274.firebaseapp.com",
   databaseURL: "https://myntra-hackerramp-db274-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "myntra-hackerramp-db274",
